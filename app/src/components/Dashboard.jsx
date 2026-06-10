@@ -7,8 +7,23 @@ import 'jspdf-autotable';
 export default function Dashboard({ data, kpi, onReimport, categoryName }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('Todos os Status');
+  const [columnFilters, setColumnFilters] = useState({
+    id: '',
+    credor: '',
+    vencimento: '',
+    valor: '',
+    statusZepp: '',
+    noRomaneio: '',
+    observacao: '',
+    acao: ''
+  });
 
-  const faltaRomaneioData = data.filter(item => {
+  const handleColumnFilterChange = (col, value) => {
+    setColumnFilters(prev => ({ ...prev, [col]: value }));
+  };
+
+  const isFaltaRomaneioItem = (item) => {
+    if (!item.acao) return false;
     const isAprovadoZepp = String(item.statusZepp || '').toLowerCase().includes('aprovado');
     const isFaltaRomaneio = item.acao.includes('Falta Romaneio') || item.acao.includes('Falta na Base') || item.acao.includes('Falta Base');
     
@@ -17,8 +32,15 @@ export default function Dashboard({ data, kpi, onReimport, categoryName }) {
     const isCaucao = obsLower.includes('caução referente à medição') || obsLower.includes('caucao referente a medicao');
     
     return isAprovadoZepp && isFaltaRomaneio && !isCaucao;
-  });
+  };
+
+  const faltaRomaneioData = data.filter(isFaltaRomaneioItem);
   const faltaRomaneioCount = faltaRomaneioData.length;
+
+  const formatCurrency = (val) => {
+    if (val === null || val === undefined || isNaN(val)) return '';
+    return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
+  };
 
   // Filtragem local
   const filteredData = data.filter(item => {
@@ -27,20 +49,27 @@ export default function Dashboard({ data, kpi, onReimport, categoryName }) {
                           String(item.id || '').toLowerCase().includes(searchTerm.toLowerCase());
     
     const matchesStatus = statusFilter === 'Todos os Status' || 
-                          (statusFilter === 'OK' && item.acao.startsWith('OK')) ||
-                          (statusFilter === 'Alerta' && item.acao.startsWith('ALERTA'));
+                          (statusFilter === 'OK' && item.acao && item.acao.startsWith('OK')) ||
+                          (statusFilter === 'Alerta' && item.acao && item.acao.startsWith('ALERTA')) ||
+                          (statusFilter === 'Falta Romaneio' && isFaltaRomaneioItem(item));
+
+    const matchesId = String(item.id || '').toLowerCase().includes(columnFilters.id.toLowerCase());
+    const matchesCredor = String(item.credor || '').toLowerCase().includes(columnFilters.credor.toLowerCase());
+    const matchesVencimento = String(item.vencimento || '').toLowerCase().includes(columnFilters.vencimento.toLowerCase());
+    const matchesValor = formatCurrency(item.valor).toLowerCase().includes(columnFilters.valor.toLowerCase());
+    const matchesStatusZepp = String(item.statusZepp || '').toLowerCase().includes(columnFilters.statusZepp.toLowerCase());
+    const matchesNoRomaneio = String(item.noRomaneio || '').toLowerCase().includes(columnFilters.noRomaneio.toLowerCase());
+    const matchesObservacao = String(item.observacao || '').toLowerCase().includes(columnFilters.observacao.toLowerCase());
+    const matchesAcao = String(item.acao || '').toLowerCase().includes(columnFilters.acao.toLowerCase());
                           
-    return matchesSearch && matchesStatus;
+    return matchesSearch && matchesStatus && matchesId && matchesCredor && matchesVencimento && matchesValor && matchesStatusZepp && matchesNoRomaneio && matchesObservacao && matchesAcao;
   });
 
   const getBadgeClass = (acao) => {
+    if (!acao) return 'badge-warning';
     if (acao.startsWith('OK')) return 'badge-success';
     if (acao.includes('Falta Romaneio') && acao.includes('Falta Zepp')) return 'badge-danger';
     return 'badge-warning';
-  };
-
-  const formatCurrency = (val) => {
-    return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
   };
 
   const getIDHeaderName = () => {
@@ -175,6 +204,7 @@ export default function Dashboard({ data, kpi, onReimport, categoryName }) {
               <option value="Todos os Status">Todos os Status</option>
               <option value="OK">Somente OK</option>
               <option value="Alerta">Somente Alertas</option>
+              <option value="Falta Romaneio">Somente Falta Romaneio</option>
             </select>
             
             <button className="btn" onClick={exportExcel}>
@@ -190,14 +220,38 @@ export default function Dashboard({ data, kpi, onReimport, categoryName }) {
           <table>
             <thead>
               <tr>
-                <th>{getIDHeaderName()}</th>
-                <th>Credor</th>
-                <th>Vencimento</th>
-                <th>Valor</th>
-                <th>Status Zepp</th>
-                <th>Nº Romaneio</th>
-                <th>Observação</th>
-                <th>Ação Requerida</th>
+                <th>
+                  <div>{getIDHeaderName()}</div>
+                  <input type="text" placeholder="Filtrar..." value={columnFilters.id} onChange={(e) => handleColumnFilterChange('id', e.target.value)} className="col-filter" />
+                </th>
+                <th>
+                  <div>Credor</div>
+                  <input type="text" placeholder="Filtrar..." value={columnFilters.credor} onChange={(e) => handleColumnFilterChange('credor', e.target.value)} className="col-filter" />
+                </th>
+                <th>
+                  <div>Vencimento</div>
+                  <input type="text" placeholder="Filtrar..." value={columnFilters.vencimento} onChange={(e) => handleColumnFilterChange('vencimento', e.target.value)} className="col-filter" />
+                </th>
+                <th>
+                  <div>Valor</div>
+                  <input type="text" placeholder="Filtrar..." value={columnFilters.valor} onChange={(e) => handleColumnFilterChange('valor', e.target.value)} className="col-filter" />
+                </th>
+                <th>
+                  <div>Status Zepp</div>
+                  <input type="text" placeholder="Filtrar..." value={columnFilters.statusZepp} onChange={(e) => handleColumnFilterChange('statusZepp', e.target.value)} className="col-filter" />
+                </th>
+                <th>
+                  <div>Nº Romaneio</div>
+                  <input type="text" placeholder="Filtrar..." value={columnFilters.noRomaneio} onChange={(e) => handleColumnFilterChange('noRomaneio', e.target.value)} className="col-filter" />
+                </th>
+                <th>
+                  <div>Observação</div>
+                  <input type="text" placeholder="Filtrar..." value={columnFilters.observacao} onChange={(e) => handleColumnFilterChange('observacao', e.target.value)} className="col-filter" />
+                </th>
+                <th>
+                  <div>Ação Requerida</div>
+                  <input type="text" placeholder="Filtrar..." value={columnFilters.acao} onChange={(e) => handleColumnFilterChange('acao', e.target.value)} className="col-filter" />
+                </th>
               </tr>
             </thead>
             <tbody>
