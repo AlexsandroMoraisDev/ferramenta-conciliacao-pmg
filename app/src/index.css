@@ -164,6 +164,16 @@ body {
   font-weight: 700;
 }
 
+.kpi-card.clickable {
+  cursor: pointer;
+  transition: transform 0.2s;
+}
+
+.kpi-card.clickable:hover {
+  transform: scale(1.02);
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+}
+
 /* Tables */
 .table-container {
   background: var(--card-bg);
@@ -267,18 +277,14 @@ tr:hover {
 }
 
 /* Import Modal */
-.modal-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0,0,0,0.5);
+.import-container {
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 50;
-  backdrop-filter: blur(4px);
+  padding: 2rem;
 }
 
-.modal {
+.import-card {
   background: var(--card-bg);
   border-radius: 1rem;
   padding: 2rem;
@@ -287,7 +293,7 @@ tr:hover {
   box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
 }
 
-.modal h2 {
+.import-card h2 {
   font-size: 1.5rem;
   margin-bottom: 1.5rem;
   color: var(--primary-color);

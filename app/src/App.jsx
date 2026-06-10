@@ -21,7 +21,7 @@ function App() {
   const handleImport = async (files) => {
     setIsProcessing(true);
     try {
-      const { results, kpi } = await processConciliacao(files);
+      const { results, kpi } = await processConciliacao(files, activeTab);
       setAppState(prev => ({
         ...prev,
         [activeTab]: { imported: true, data: results, kpi }

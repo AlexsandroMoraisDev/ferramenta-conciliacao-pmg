@@ -23,8 +23,8 @@ export default function ImportModal({ onImport, categoryName, onClose }) {
   const anyFileSelected = files.romaneio || files.sienge || files.zepp;
 
   return (
-    <div className="modal-overlay">
-      <div className="modal">
+    <div className="import-container">
+      <div className="import-card">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <h2>Importar Dados - {categoryName}</h2>
           {onClose && (

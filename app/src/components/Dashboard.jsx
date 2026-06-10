@@ -8,10 +8,23 @@ export default function Dashboard({ data, kpi, onReimport, categoryName }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('Todos os Status');
 
+  const faltaRomaneioData = data.filter(item => {
+    const isAprovadoZepp = String(item.statusZepp || '').toLowerCase().includes('aprovado');
+    const isFaltaRomaneio = item.acao.includes('Falta Romaneio') || item.acao.includes('Falta na Base') || item.acao.includes('Falta Base');
+    
+    // Normalizando a observação para evitar erros de acentuação
+    const obsLower = String(item.observacao || '').toLowerCase();
+    const isCaucao = obsLower.includes('caução referente à medição') || obsLower.includes('caucao referente a medicao');
+    
+    return isAprovadoZepp && isFaltaRomaneio && !isCaucao;
+  });
+  const faltaRomaneioCount = faltaRomaneioData.length;
+
   // Filtragem local
   const filteredData = data.filter(item => {
     const matchesSearch = item.credor.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                          item.noRomaneio.toLowerCase().includes(searchTerm.toLowerCase());
+                          item.noRomaneio.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                          String(item.id || '').toLowerCase().includes(searchTerm.toLowerCase());
     
     const matchesStatus = statusFilter === 'Todos os Status' || 
                           (statusFilter === 'OK' && item.acao.startsWith('OK')) ||
@@ -30,8 +43,16 @@ export default function Dashboard({ data, kpi, onReimport, categoryName }) {
     return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
   };
 
+  const getIDHeaderName = () => {
+    if (categoryName === 'Contratos') return 'Nº Contrato';
+    if (categoryName === 'Pedidos') return 'Nº Pedido';
+    if (categoryName === 'Medições') return 'Nº Contrato / Medição';
+    return 'Título';
+  };
+
   const exportExcel = () => {
     const ws = XLSX.utils.json_to_sheet(filteredData.map(d => ({
+      [getIDHeaderName()]: d.id,
       Credor: d.credor,
       Vencimento: d.vencimento,
       Valor: d.valor,
@@ -45,15 +66,36 @@ export default function Dashboard({ data, kpi, onReimport, categoryName }) {
     XLSX.writeFile(wb, `Conciliacao_${categoryName}.xlsx`);
   };
 
+  const exportFaltaRomaneio = () => {
+    if (faltaRomaneioData.length === 0) {
+      alert('Nenhum item com alerta de Falta Romaneio ou Base.');
+      return;
+    }
+    const ws = XLSX.utils.json_to_sheet(faltaRomaneioData.map(d => ({
+      [getIDHeaderName()]: d.id,
+      Credor: d.credor,
+      Vencimento: d.vencimento,
+      Valor: d.valor,
+      'Status Zepp': d.statusZepp,
+      'Nº Romaneio': d.noRomaneio,
+      'Observação': d.observacao,
+      'Ação Requerida': d.acao
+    })));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Falta_Romaneio");
+    XLSX.writeFile(wb, `Conciliacao_${categoryName}_FaltaRomaneio.xlsx`);
+  };
+
   const exportPDF = () => {
     const doc = new jsPDF('landscape');
     doc.text(`Resultados da Conciliação - ${categoryName}`, 14, 15);
     
-    const tableColumn = ["Credor", "Vencimento", "Valor", "Status Zepp", "Romaneio", "Ação"];
+    const tableColumn = [getIDHeaderName(), "Credor", "Vencimento", "Valor", "Status Zepp", "Romaneio", "Ação"];
     const tableRows = [];
 
     filteredData.forEach(item => {
       const rowData = [
+        item.id,
         item.credor,
         item.vencimento,
         formatCurrency(item.valor),
@@ -100,6 +142,15 @@ export default function Dashboard({ data, kpi, onReimport, categoryName }) {
           <h3 style={{ color: 'var(--danger-color)' }}>Ação Necessária</h3>
           <div className="value" style={{ color: 'var(--danger-color)' }}>{kpi.acao}</div>
         </div>
+        <div 
+          className="kpi-card clickable" 
+          style={{ borderBottom: '4px solid #8b5cf6' }}
+          onClick={exportFaltaRomaneio}
+          title="Clique para baixar a planilha apenas com itens faltando no Romaneio"
+        >
+          <h3 style={{ color: '#8b5cf6' }}>Falta Romaneio (Baixar)</h3>
+          <div className="value" style={{ color: '#8b5cf6' }}>{faltaRomaneioCount}</div>
+        </div>
       </div>
 
       <div className="table-container">
@@ -139,6 +190,7 @@ export default function Dashboard({ data, kpi, onReimport, categoryName }) {
           <table>
             <thead>
               <tr>
+                <th>{getIDHeaderName()}</th>
                 <th>Credor</th>
                 <th>Vencimento</th>
                 <th>Valor</th>
@@ -151,13 +203,14 @@ export default function Dashboard({ data, kpi, onReimport, categoryName }) {
             <tbody>
               {filteredData.length === 0 ? (
                 <tr>
-                  <td colSpan="7" style={{ textAlign: 'center', padding: '2rem' }}>
+                  <td colSpan="8" style={{ textAlign: 'center', padding: '2rem' }}>
                     Nenhum resultado encontrado.
                   </td>
                 </tr>
               ) : (
                 filteredData.map((item, index) => (
                   <tr key={index}>
+                    <td>{item.id}</td>
                     <td style={{ fontWeight: 500 }}>{item.credor}</td>
                     <td>{item.vencimento}</td>
                     <td style={{ fontWeight: 600 }}>{formatCurrency(item.valor)}</td>
