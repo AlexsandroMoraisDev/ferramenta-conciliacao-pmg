@@ -294,25 +294,28 @@ const processPedidos = (siengeData, zeppData, romaneioData) => {
     const zeppStatusLower = statusZepp.toLowerCase();
     
     if (inRomaneio && inZepp && (zeppStatusLower.includes('aprovado') || zeppStatusLower.includes('concluído'))) {
-      acao = 'OK: Base Atualizada e Aprovado'; kpi.pronto++;
+      acao = 'OK: CONCILIADO'; kpi.pronto++;
     } else if (inRomaneio && inZepp) {
-      acao = 'ALERTA: Em Aprovação no Zepp'; kpi.aprovacao++;
+      acao = 'ALERTA: PENDENTE ZEPP'; kpi.aprovacao++;
     } else if (inZepp && !inRomaneio) {
-      acao = 'ALERTA: Falta na Base'; zeppStatusLower.includes('aprov') ? kpi.acao++ : kpi.aprovacao++;
+      acao = 'ALERTA: CADASTRAR ROMANEIO'; kpi.acao++;
     } else if (inRomaneio && !inZepp) {
-      acao = 'ALERTA: Falta Zepp'; kpi.acao++;
+      acao = 'ALERTA: LANÇAR NO ZEPP'; kpi.acao++;
     } else {
-      acao = 'ALERTA: Falta Base e Zepp'; kpi.acao++;
+      acao = 'ALERTA: VERIFICAR DADOS'; kpi.acao++;
     }
 
     kpi.total++;
     results.push({
       id: idSienge || '-',
       credor: siengeRow['Fornecedor'] || '-',
-      vencimento: siengeRow['Data do Pedido'] || '-',
+      cnpj: siengeRow['CNPJ/CPF'] || siengeRow['CNPJ'] || (inRomaneio ? (romaneioMatches[0]['CNPJ/CPF'] || romaneioMatches[0]['CNPJ']) : '') || '-',
+      apropriacao: inRomaneio ? (romaneioMatches[0]['APROPRIAÇÃO'] || '-') : '-',
+      vencimento: siengeRow['Data do Pedido'] || '-', // kept for compatibility with excel export if needed, but won't render
       valor: getValor(siengeRow),
+      vinculoFaturamentoDireto: inRomaneio ? (romaneioMatches[0]['VÍNCULO DE FATURAMENTO DIRETO'] || '-') : '-',
       statusZepp,
-      noRomaneio,
+      noRomaneio, // kept for compatibility
       observacao: siengeRow['Situação dos Pedidos'] || '-',
       acao,
       originalSienge: siengeRow
