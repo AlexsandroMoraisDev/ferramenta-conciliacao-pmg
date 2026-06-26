@@ -10,8 +10,11 @@ export default function Dashboard({ data, kpi, onReimport, categoryName }) {
   const [columnFilters, setColumnFilters] = useState({
     id: '',
     credor: '',
+    cnpj: '',
+    apropriacao: '',
     vencimento: '',
     valor: '',
+    vinculoFaturamentoDireto: '',
     statusZepp: '',
     noRomaneio: '',
     observacao: '',
@@ -55,14 +58,17 @@ export default function Dashboard({ data, kpi, onReimport, categoryName }) {
 
     const matchesId = String(item.id || '').toLowerCase().includes(columnFilters.id.toLowerCase());
     const matchesCredor = String(item.credor || '').toLowerCase().includes(columnFilters.credor.toLowerCase());
+    const matchesCnpj = String(item.cnpj || '').toLowerCase().includes(columnFilters.cnpj.toLowerCase());
+    const matchesApropriacao = String(item.apropriacao || '').toLowerCase().includes(columnFilters.apropriacao.toLowerCase());
     const matchesVencimento = String(item.vencimento || '').toLowerCase().includes(columnFilters.vencimento.toLowerCase());
     const matchesValor = formatCurrency(item.valor).toLowerCase().includes(columnFilters.valor.toLowerCase());
+    const matchesVinculo = String(item.vinculoFaturamentoDireto || '').toLowerCase().includes(columnFilters.vinculoFaturamentoDireto.toLowerCase());
     const matchesStatusZepp = String(item.statusZepp || '').toLowerCase().includes(columnFilters.statusZepp.toLowerCase());
     const matchesNoRomaneio = String(item.noRomaneio || '').toLowerCase().includes(columnFilters.noRomaneio.toLowerCase());
     const matchesObservacao = String(item.observacao || '').toLowerCase().includes(columnFilters.observacao.toLowerCase());
     const matchesAcao = String(item.acao || '').toLowerCase().includes(columnFilters.acao.toLowerCase());
                           
-    return matchesSearch && matchesStatus && matchesId && matchesCredor && matchesVencimento && matchesValor && matchesStatusZepp && matchesNoRomaneio && matchesObservacao && matchesAcao;
+    return matchesSearch && matchesStatus && matchesId && matchesCredor && matchesCnpj && matchesApropriacao && matchesVencimento && matchesValor && matchesVinculo && matchesStatusZepp && matchesNoRomaneio && matchesObservacao && matchesAcao;
   });
 
   const getBadgeClass = (acao) => {
@@ -80,16 +86,31 @@ export default function Dashboard({ data, kpi, onReimport, categoryName }) {
   };
 
   const exportExcel = () => {
-    const ws = XLSX.utils.json_to_sheet(filteredData.map(d => ({
-      [getIDHeaderName()]: d.id,
-      Credor: d.credor,
-      Vencimento: d.vencimento,
-      Valor: d.valor,
-      'Status Zepp': d.statusZepp,
-      'Nº Romaneio': d.noRomaneio,
-      'Observação': d.observacao,
-      'Ação Requerida': d.acao
-    })));
+    const ws = XLSX.utils.json_to_sheet(filteredData.map(d => {
+      if (categoryName === 'Pedidos') {
+        return {
+          'PEDIDO': d.id,
+          'CREDOR': d.credor,
+          'CNPJ': d.cnpj,
+          'APROPRIAÇÃO': d.apropriacao,
+          'VALOR': d.valor,
+          'VÍNCULO DE FATURAMENTO DIRETO': d.vinculoFaturamentoDireto,
+          'STATUS ZEPP': d.statusZepp,
+          'OBSERVAÇÃO': d.observacao,
+          'AÇÃO REQUERIDA': d.acao
+        };
+      }
+      return {
+        [getIDHeaderName()]: d.id,
+        Credor: d.credor,
+        Vencimento: d.vencimento,
+        Valor: d.valor,
+        'Status Zepp': d.statusZepp,
+        'Nº Romaneio': d.noRomaneio,
+        'Observação': d.observacao,
+        'Ação Requerida': d.acao
+      };
+    }));
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Resultados");
     XLSX.writeFile(wb, `Conciliacao_${categoryName}.xlsx`);
@@ -100,16 +121,31 @@ export default function Dashboard({ data, kpi, onReimport, categoryName }) {
       alert('Nenhum item com alerta de Falta Romaneio ou Base.');
       return;
     }
-    const ws = XLSX.utils.json_to_sheet(faltaRomaneioData.map(d => ({
-      [getIDHeaderName()]: d.id,
-      Credor: d.credor,
-      Vencimento: d.vencimento,
-      Valor: d.valor,
-      'Status Zepp': d.statusZepp,
-      'Nº Romaneio': d.noRomaneio,
-      'Observação': d.observacao,
-      'Ação Requerida': d.acao
-    })));
+    const ws = XLSX.utils.json_to_sheet(faltaRomaneioData.map(d => {
+      if (categoryName === 'Pedidos') {
+        return {
+          'PEDIDO': d.id,
+          'CREDOR': d.credor,
+          'CNPJ': d.cnpj,
+          'APROPRIAÇÃO': d.apropriacao,
+          'VALOR': d.valor,
+          'VÍNCULO DE FATURAMENTO DIRETO': d.vinculoFaturamentoDireto,
+          'STATUS ZEPP': d.statusZepp,
+          'OBSERVAÇÃO': d.observacao,
+          'AÇÃO REQUERIDA': d.acao
+        };
+      }
+      return {
+        [getIDHeaderName()]: d.id,
+        Credor: d.credor,
+        Vencimento: d.vencimento,
+        Valor: d.valor,
+        'Status Zepp': d.statusZepp,
+        'Nº Romaneio': d.noRomaneio,
+        'Observação': d.observacao,
+        'Ação Requerida': d.acao
+      };
+    }));
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Falta_Romaneio");
     XLSX.writeFile(wb, `Conciliacao_${categoryName}_FaltaRomaneio.xlsx`);
@@ -119,19 +155,15 @@ export default function Dashboard({ data, kpi, onReimport, categoryName }) {
     const doc = new jsPDF('landscape');
     doc.text(`Resultados da Conciliação - ${categoryName}`, 14, 15);
     
-    const tableColumn = [getIDHeaderName(), "Credor", "Vencimento", "Valor", "Status Zepp", "Romaneio", "Ação"];
+    const tableColumn = categoryName === 'Pedidos' 
+      ? ["Pedido", "Credor", "CNPJ", "Apropriação", "Valor", "Vínc. Faturamento", "Status Zepp", "Observação", "Ação"]
+      : [getIDHeaderName(), "Credor", "Vencimento", "Valor", "Status Zepp", "Romaneio", "Ação"];
     const tableRows = [];
 
     filteredData.forEach(item => {
-      const rowData = [
-        item.id,
-        item.credor,
-        item.vencimento,
-        formatCurrency(item.valor),
-        item.statusZepp,
-        item.noRomaneio,
-        item.acao
-      ];
+      const rowData = categoryName === 'Pedidos'
+        ? [item.id, item.credor, item.cnpj, item.apropriacao, formatCurrency(item.valor), item.vinculoFaturamentoDireto, item.statusZepp, item.observacao, item.acao]
+        : [item.id, item.credor, item.vencimento, formatCurrency(item.valor), item.statusZepp, item.noRomaneio, item.acao];
       tableRows.push(rowData);
     });
 
@@ -219,40 +251,81 @@ export default function Dashboard({ data, kpi, onReimport, categoryName }) {
         <div style={{ overflowX: 'auto' }}>
           <table>
             <thead>
-              <tr>
-                <th>
-                  <div>{getIDHeaderName()}</div>
-                  <input type="text" placeholder="Filtrar..." value={columnFilters.id} onChange={(e) => handleColumnFilterChange('id', e.target.value)} className="col-filter" />
-                </th>
-                <th>
-                  <div>Credor</div>
-                  <input type="text" placeholder="Filtrar..." value={columnFilters.credor} onChange={(e) => handleColumnFilterChange('credor', e.target.value)} className="col-filter" />
-                </th>
-                <th>
-                  <div>Vencimento</div>
-                  <input type="text" placeholder="Filtrar..." value={columnFilters.vencimento} onChange={(e) => handleColumnFilterChange('vencimento', e.target.value)} className="col-filter" />
-                </th>
-                <th>
-                  <div>Valor</div>
-                  <input type="text" placeholder="Filtrar..." value={columnFilters.valor} onChange={(e) => handleColumnFilterChange('valor', e.target.value)} className="col-filter" />
-                </th>
-                <th>
-                  <div>Status Zepp</div>
-                  <input type="text" placeholder="Filtrar..." value={columnFilters.statusZepp} onChange={(e) => handleColumnFilterChange('statusZepp', e.target.value)} className="col-filter" />
-                </th>
-                <th>
-                  <div>Nº Romaneio</div>
-                  <input type="text" placeholder="Filtrar..." value={columnFilters.noRomaneio} onChange={(e) => handleColumnFilterChange('noRomaneio', e.target.value)} className="col-filter" />
-                </th>
-                <th>
-                  <div>Observação</div>
-                  <input type="text" placeholder="Filtrar..." value={columnFilters.observacao} onChange={(e) => handleColumnFilterChange('observacao', e.target.value)} className="col-filter" />
-                </th>
-                <th>
-                  <div>Ação Requerida</div>
-                  <input type="text" placeholder="Filtrar..." value={columnFilters.acao} onChange={(e) => handleColumnFilterChange('acao', e.target.value)} className="col-filter" />
-                </th>
-              </tr>
+              {categoryName === 'Pedidos' ? (
+                <tr>
+                  <th>
+                    <div>PEDIDO</div>
+                    <input type="text" placeholder="Filtrar..." value={columnFilters.id} onChange={(e) => handleColumnFilterChange('id', e.target.value)} className="col-filter" />
+                  </th>
+                  <th>
+                    <div>CREDOR</div>
+                    <input type="text" placeholder="Filtrar..." value={columnFilters.credor} onChange={(e) => handleColumnFilterChange('credor', e.target.value)} className="col-filter" />
+                  </th>
+                  <th>
+                    <div>CNPJ</div>
+                    <input type="text" placeholder="Filtrar..." value={columnFilters.cnpj} onChange={(e) => handleColumnFilterChange('cnpj', e.target.value)} className="col-filter" />
+                  </th>
+                  <th>
+                    <div>APROPRIAÇÃO</div>
+                    <input type="text" placeholder="Filtrar..." value={columnFilters.apropriacao} onChange={(e) => handleColumnFilterChange('apropriacao', e.target.value)} className="col-filter" />
+                  </th>
+                  <th>
+                    <div>VALOR</div>
+                    <input type="text" placeholder="Filtrar..." value={columnFilters.valor} onChange={(e) => handleColumnFilterChange('valor', e.target.value)} className="col-filter" />
+                  </th>
+                  <th>
+                    <div>VÍNCULO DE FATURAMENTO DIRETO</div>
+                    <input type="text" placeholder="Filtrar..." value={columnFilters.vinculoFaturamentoDireto} onChange={(e) => handleColumnFilterChange('vinculoFaturamentoDireto', e.target.value)} className="col-filter" />
+                  </th>
+                  <th>
+                    <div>STATUS ZEPP</div>
+                    <input type="text" placeholder="Filtrar..." value={columnFilters.statusZepp} onChange={(e) => handleColumnFilterChange('statusZepp', e.target.value)} className="col-filter" />
+                  </th>
+                  <th>
+                    <div>OBSERVAÇÃO</div>
+                    <input type="text" placeholder="Filtrar..." value={columnFilters.observacao} onChange={(e) => handleColumnFilterChange('observacao', e.target.value)} className="col-filter" />
+                  </th>
+                  <th>
+                    <div>AÇÃO REQUERIDA</div>
+                    <input type="text" placeholder="Filtrar..." value={columnFilters.acao} onChange={(e) => handleColumnFilterChange('acao', e.target.value)} className="col-filter" />
+                  </th>
+                </tr>
+              ) : (
+                <tr>
+                  <th>
+                    <div>{getIDHeaderName()}</div>
+                    <input type="text" placeholder="Filtrar..." value={columnFilters.id} onChange={(e) => handleColumnFilterChange('id', e.target.value)} className="col-filter" />
+                  </th>
+                  <th>
+                    <div>Credor</div>
+                    <input type="text" placeholder="Filtrar..." value={columnFilters.credor} onChange={(e) => handleColumnFilterChange('credor', e.target.value)} className="col-filter" />
+                  </th>
+                  <th>
+                    <div>Vencimento</div>
+                    <input type="text" placeholder="Filtrar..." value={columnFilters.vencimento} onChange={(e) => handleColumnFilterChange('vencimento', e.target.value)} className="col-filter" />
+                  </th>
+                  <th>
+                    <div>Valor</div>
+                    <input type="text" placeholder="Filtrar..." value={columnFilters.valor} onChange={(e) => handleColumnFilterChange('valor', e.target.value)} className="col-filter" />
+                  </th>
+                  <th>
+                    <div>Status Zepp</div>
+                    <input type="text" placeholder="Filtrar..." value={columnFilters.statusZepp} onChange={(e) => handleColumnFilterChange('statusZepp', e.target.value)} className="col-filter" />
+                  </th>
+                  <th>
+                    <div>Nº Romaneio</div>
+                    <input type="text" placeholder="Filtrar..." value={columnFilters.noRomaneio} onChange={(e) => handleColumnFilterChange('noRomaneio', e.target.value)} className="col-filter" />
+                  </th>
+                  <th>
+                    <div>Observação</div>
+                    <input type="text" placeholder="Filtrar..." value={columnFilters.observacao} onChange={(e) => handleColumnFilterChange('observacao', e.target.value)} className="col-filter" />
+                  </th>
+                  <th>
+                    <div>Ação Requerida</div>
+                    <input type="text" placeholder="Filtrar..." value={columnFilters.acao} onChange={(e) => handleColumnFilterChange('acao', e.target.value)} className="col-filter" />
+                  </th>
+                </tr>
+              )}
             </thead>
             <tbody>
               {filteredData.length === 0 ? (
@@ -264,20 +337,42 @@ export default function Dashboard({ data, kpi, onReimport, categoryName }) {
               ) : (
                 filteredData.map((item, index) => (
                   <tr key={index}>
-                    <td>{item.id}</td>
-                    <td style={{ fontWeight: 500 }}>{item.credor}</td>
-                    <td>{item.vencimento}</td>
-                    <td style={{ fontWeight: 600 }}>{formatCurrency(item.valor)}</td>
-                    <td>{item.statusZepp}</td>
-                    <td>{item.noRomaneio}</td>
-                    <td style={{ color: 'var(--text-muted)', fontSize: '0.8rem', maxWidth: '200px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                      {item.observacao}
-                    </td>
-                    <td>
-                      <span className={`badge ${getBadgeClass(item.acao)}`}>
-                        {item.acao}
-                      </span>
-                    </td>
+                    {categoryName === 'Pedidos' ? (
+                      <>
+                        <td>{item.id}</td>
+                        <td style={{ fontWeight: 500 }}>{item.credor}</td>
+                        <td>{item.cnpj}</td>
+                        <td>{item.apropriacao}</td>
+                        <td style={{ fontWeight: 600 }}>{formatCurrency(item.valor)}</td>
+                        <td>{item.vinculoFaturamentoDireto}</td>
+                        <td>{item.statusZepp}</td>
+                        <td style={{ color: 'var(--text-muted)', fontSize: '0.8rem', maxWidth: '200px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {item.observacao}
+                        </td>
+                        <td>
+                          <span className={`badge ${getBadgeClass(item.acao)}`}>
+                            {item.acao}
+                          </span>
+                        </td>
+                      </>
+                    ) : (
+                      <>
+                        <td>{item.id}</td>
+                        <td style={{ fontWeight: 500 }}>{item.credor}</td>
+                        <td>{item.vencimento}</td>
+                        <td style={{ fontWeight: 600 }}>{formatCurrency(item.valor)}</td>
+                        <td>{item.statusZepp}</td>
+                        <td>{item.noRomaneio}</td>
+                        <td style={{ color: 'var(--text-muted)', fontSize: '0.8rem', maxWidth: '200px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {item.observacao}
+                        </td>
+                        <td>
+                          <span className={`badge ${getBadgeClass(item.acao)}`}>
+                            {item.acao}
+                          </span>
+                        </td>
+                      </>
+                    )}
                   </tr>
                 ))
               )}
