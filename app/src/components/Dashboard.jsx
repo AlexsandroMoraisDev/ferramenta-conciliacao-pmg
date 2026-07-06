@@ -18,7 +18,9 @@ export default function Dashboard({ data, kpi, onReimport, categoryName }) {
     statusZepp: '',
     noRomaneio: '',
     observacao: '',
-    acao: ''
+    acao: '',
+    tipoDocumento: '',
+    dataEmissao: ''
   });
 
   const handleColumnFilterChange = (col, value) => {
@@ -67,8 +69,10 @@ export default function Dashboard({ data, kpi, onReimport, categoryName }) {
     const matchesNoRomaneio = String(item.noRomaneio || '').toLowerCase().includes(columnFilters.noRomaneio.toLowerCase());
     const matchesObservacao = String(item.observacao || '').toLowerCase().includes(columnFilters.observacao.toLowerCase());
     const matchesAcao = String(item.acao || '').toLowerCase().includes(columnFilters.acao.toLowerCase());
+    const matchesTipoDocumento = String(item.tipoDocumento || '').toLowerCase().includes((columnFilters.tipoDocumento || '').toLowerCase());
+    const matchesDataEmissao = String(item.dataEmissao || '').toLowerCase().includes((columnFilters.dataEmissao || '').toLowerCase());
                           
-    return matchesSearch && matchesStatus && matchesId && matchesCredor && matchesCnpj && matchesApropriacao && matchesVencimento && matchesValor && matchesVinculo && matchesStatusZepp && matchesNoRomaneio && matchesObservacao && matchesAcao;
+    return matchesSearch && matchesStatus && matchesId && matchesCredor && matchesCnpj && matchesApropriacao && matchesVencimento && matchesValor && matchesVinculo && matchesStatusZepp && matchesNoRomaneio && matchesObservacao && matchesAcao && matchesTipoDocumento && matchesDataEmissao;
   });
 
   const getBadgeClass = (acao) => {
@@ -102,7 +106,9 @@ export default function Dashboard({ data, kpi, onReimport, categoryName }) {
       }
       return {
         [getIDHeaderName()]: d.id,
+        ...(categoryName === 'Títulos' ? { 'Tipo de Documento': d.tipoDocumento } : {}),
         Credor: d.credor,
+        ...(categoryName === 'Títulos' ? { 'Data de Emissão': d.dataEmissao } : {}),
         Vencimento: d.vencimento,
         Valor: d.valor,
         'Status Zepp': d.statusZepp,
@@ -137,7 +143,9 @@ export default function Dashboard({ data, kpi, onReimport, categoryName }) {
       }
       return {
         [getIDHeaderName()]: d.id,
+        ...(categoryName === 'Títulos' ? { 'Tipo de Documento': d.tipoDocumento } : {}),
         Credor: d.credor,
+        ...(categoryName === 'Títulos' ? { 'Data de Emissão': d.dataEmissao } : {}),
         Vencimento: d.vencimento,
         Valor: d.valor,
         'Status Zepp': d.statusZepp,
@@ -157,13 +165,17 @@ export default function Dashboard({ data, kpi, onReimport, categoryName }) {
     
     const tableColumn = categoryName === 'Pedidos' 
       ? ["Pedido", "Credor", "CNPJ", "Apropriação", "Valor", "Vínc. Faturamento", "Status Zepp", "Observação", "Ação"]
-      : [getIDHeaderName(), "Credor", "Vencimento", "Valor", "Status Zepp", "Romaneio", "Ação"];
+      : categoryName === 'Títulos'
+        ? [getIDHeaderName(), "Tipo de Documento", "Credor", "Data de Emissão", "Vencimento", "Valor", "Status Zepp", "Romaneio", "Ação"]
+        : [getIDHeaderName(), "Credor", "Vencimento", "Valor", "Status Zepp", "Romaneio", "Ação"];
     const tableRows = [];
 
     filteredData.forEach(item => {
       const rowData = categoryName === 'Pedidos'
         ? [item.id, item.credor, item.cnpj, item.apropriacao, formatCurrency(item.valor), item.vinculoFaturamentoDireto, item.statusZepp, item.observacao, item.acao]
-        : [item.id, item.credor, item.vencimento, formatCurrency(item.valor), item.statusZepp, item.noRomaneio, item.acao];
+        : categoryName === 'Títulos'
+          ? [item.id, item.tipoDocumento, item.credor, item.dataEmissao, item.vencimento, formatCurrency(item.valor), item.statusZepp, item.noRomaneio, item.acao]
+          : [item.id, item.credor, item.vencimento, formatCurrency(item.valor), item.statusZepp, item.noRomaneio, item.acao];
       tableRows.push(rowData);
     });
 
@@ -296,10 +308,22 @@ export default function Dashboard({ data, kpi, onReimport, categoryName }) {
                     <div>{getIDHeaderName()}</div>
                     <input type="text" placeholder="Filtrar..." value={columnFilters.id} onChange={(e) => handleColumnFilterChange('id', e.target.value)} className="col-filter" />
                   </th>
+                  {categoryName === 'Títulos' && (
+                    <th>
+                      <div>Tipo de Documento</div>
+                      <input type="text" placeholder="Filtrar..." value={columnFilters.tipoDocumento} onChange={(e) => handleColumnFilterChange('tipoDocumento', e.target.value)} className="col-filter" />
+                    </th>
+                  )}
                   <th>
                     <div>Credor</div>
                     <input type="text" placeholder="Filtrar..." value={columnFilters.credor} onChange={(e) => handleColumnFilterChange('credor', e.target.value)} className="col-filter" />
                   </th>
+                  {categoryName === 'Títulos' && (
+                    <th>
+                      <div>Data de Emissão</div>
+                      <input type="text" placeholder="Filtrar..." value={columnFilters.dataEmissao} onChange={(e) => handleColumnFilterChange('dataEmissao', e.target.value)} className="col-filter" />
+                    </th>
+                  )}
                   <th>
                     <div>Vencimento</div>
                     <input type="text" placeholder="Filtrar..." value={columnFilters.vencimento} onChange={(e) => handleColumnFilterChange('vencimento', e.target.value)} className="col-filter" />
@@ -358,7 +382,13 @@ export default function Dashboard({ data, kpi, onReimport, categoryName }) {
                     ) : (
                       <>
                         <td>{item.id}</td>
+                        {categoryName === 'Títulos' && (
+                          <td>{item.tipoDocumento}</td>
+                        )}
                         <td style={{ fontWeight: 500 }}>{item.credor}</td>
+                        {categoryName === 'Títulos' && (
+                          <td>{item.dataEmissao}</td>
+                        )}
                         <td>{item.vencimento}</td>
                         <td style={{ fontWeight: 600 }}>{formatCurrency(item.valor)}</td>
                         <td>{item.statusZepp}</td>
