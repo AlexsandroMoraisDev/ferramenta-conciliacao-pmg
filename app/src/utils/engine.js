@@ -122,6 +122,8 @@ const processTitulos = (siengeData, zeppData, romaneioData) => {
     let statusZepp = inZepp ? (zeppMatches[0]['Status'] || 'Aprovado') : 'Não encontrado';
     let vencimentoZepp = inZepp ? (zeppMatches[0]['Dt. Vencto'] || zeppMatches[0]['Dt. vencto'] || '') : '';
     let noRomaneio = inRomaneio ? (romaneioMatches[0]['Nº ROMANEIO'] || romaneioMatches[0]['Nº Romaneio'] || romaneioMatches[0]['Romaneio'] || 'Encontrado') : 'Sem Romaneio';
+    let dataEmissao = inZepp ? (zeppMatches[0]['Emissão'] || zeppMatches[0]['emissão'] || '') : '';
+    let tipoDocumento = siengeRow['Documento'] || '';
 
     const zeppStatusLower = statusZepp.toLowerCase();
     
@@ -140,13 +142,16 @@ const processTitulos = (siengeData, zeppData, romaneioData) => {
     kpi.total++;
     results.push({
       id: tituloSienge || '-',
+      tipoDocumento: tipoDocumento || '-',
       credor: siengeRow['Credor'] || '-',
+      dataEmissao: dataEmissao || '-',
       vencimento: vencimentoZepp || siengeRow['Data competência'] || siengeRow['Data contábil'] || '-',
       valor: getValor(siengeRow),
       statusZepp,
       noRomaneio,
       observacao: siengeRow['Observação'] || '-',
       acao,
+      originalZepp: inZepp ? zeppMatches[0] : null,
       originalSienge: siengeRow
     });
   });
