@@ -3,7 +3,7 @@ import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 
 export default defineConfig({
-  base: '/ferramenta-conciliacao-pmg/', // Base URL para o GitHub Pages
+  base: '/', // Base URL para a Vercel
   plugins: [
     react(),
     VitePWA({
