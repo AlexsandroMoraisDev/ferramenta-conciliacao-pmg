@@ -18,6 +18,7 @@ export default function Dashboard({ data, kpi, onReimport, categoryName }) {
     statusZepp: '',
     noRomaneio: '',
     observacao: '',
+    acao: '',
     tipoDocumento: '',
     dataEmissao: '',
     numeroNF: ''
