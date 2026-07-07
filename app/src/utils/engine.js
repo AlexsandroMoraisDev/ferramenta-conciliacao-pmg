@@ -79,11 +79,12 @@ const processTitulos = (siengeData, zeppData, romaneioData) => {
   const zeppMapTitulo = {};
   const zeppMapCredorValor = {};
   zeppData.forEach(row => {
+    const titulo = String(row['Código Origem'] || '').split('/')[0].trim();
+    row._extractedId = titulo;
     const cv = buildCredorValorKey(row);
     if (!zeppMapCredorValor[cv]) zeppMapCredorValor[cv] = [];
     zeppMapCredorValor[cv].push(row);
 
-    const titulo = String(row['Código Origem'] || '').split('/')[0].trim();
     if (titulo) {
       if (!zeppMapTitulo[titulo]) zeppMapTitulo[titulo] = [];
       zeppMapTitulo[titulo].push(row);
@@ -93,11 +94,12 @@ const processTitulos = (siengeData, zeppData, romaneioData) => {
   const romaneioMapTitulo = {};
   const romaneioMapCredorValor = {};
   romaneioData.forEach(row => {
+    const titulo = String(row['TÍTULOS SIENGE'] || row['Título'] || row['TÍTULO'] || '').trim();
+    row._extractedId = titulo;
     const cv = buildCredorValorKey(row);
     if (!romaneioMapCredorValor[cv]) romaneioMapCredorValor[cv] = [];
     romaneioMapCredorValor[cv].push(row);
 
-    const titulo = String(row['TÍTULOS SIENGE'] || row['Título'] || row['TÍTULO'] || '').trim();
     if (titulo) {
       if (!romaneioMapTitulo[titulo]) romaneioMapTitulo[titulo] = [];
       romaneioMapTitulo[titulo].push(row);
@@ -107,13 +109,28 @@ const processTitulos = (siengeData, zeppData, romaneioData) => {
   const results = [];
   let kpi = { total: 0, pronto: 0, aprovacao: 0, acao: 0 };
 
+  const filterFallbackMatches = (matches, idSienge) => {
+    if (!idSienge) return matches;
+    return matches.filter(r => {
+      if (!r._extractedId) return true;
+      const extractedStr = String(r._extractedId).toLowerCase();
+      const idStr = String(idSienge).toLowerCase();
+      return extractedStr.includes(idStr) || idStr.includes(extractedStr);
+    });
+  };
+
   siengeData.forEach(siengeRow => {
     if (!siengeRow['Título'] && !siengeRow['Credor']) return;
     const tituloSienge = String(siengeRow['Título'] || '').trim();
     const cv = buildCredorValorKey(siengeRow);
 
-    const zeppMatches = (tituloSienge && zeppMapTitulo[tituloSienge]) ? zeppMapTitulo[tituloSienge] : (zeppMapCredorValor[cv] || []);
-    const romaneioMatches = (tituloSienge && romaneioMapTitulo[tituloSienge]) ? romaneioMapTitulo[tituloSienge] : (romaneioMapCredorValor[cv] || []);
+    const zeppMatches = (tituloSienge && zeppMapTitulo[tituloSienge]) 
+      ? zeppMapTitulo[tituloSienge] 
+      : filterFallbackMatches(zeppMapCredorValor[cv] || [], tituloSienge);
+      
+    const romaneioMatches = (tituloSienge && romaneioMapTitulo[tituloSienge]) 
+      ? romaneioMapTitulo[tituloSienge] 
+      : filterFallbackMatches(romaneioMapCredorValor[cv] || [], tituloSienge);
 
     const inZepp = zeppMatches.length > 0;
     const inRomaneio = romaneioMatches.length > 0;
