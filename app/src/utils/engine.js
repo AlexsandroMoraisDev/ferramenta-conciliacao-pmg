@@ -163,6 +163,7 @@ const processTitulos = (siengeData, zeppData, romaneioData) => {
       credor: siengeRow['Credor'] || '-',
       dataEmissao: dataEmissao || '-',
       vencimento: vencimentoZepp || siengeRow['Data competência'] || siengeRow['Data contábil'] || '-',
+      numeroNF: siengeRow['Nº documento'] || '-',
       valor: getValor(siengeRow),
       statusZepp,
       noRomaneio,
