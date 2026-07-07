@@ -18,9 +18,9 @@ export default function Dashboard({ data, kpi, onReimport, categoryName }) {
     statusZepp: '',
     noRomaneio: '',
     observacao: '',
-    acao: '',
     tipoDocumento: '',
-    dataEmissao: ''
+    dataEmissao: '',
+    numeroNF: ''
   });
 
   const handleColumnFilterChange = (col, value) => {
@@ -71,8 +71,9 @@ export default function Dashboard({ data, kpi, onReimport, categoryName }) {
     const matchesAcao = String(item.acao || '').toLowerCase().includes(columnFilters.acao.toLowerCase());
     const matchesTipoDocumento = String(item.tipoDocumento || '').toLowerCase().includes((columnFilters.tipoDocumento || '').toLowerCase());
     const matchesDataEmissao = String(item.dataEmissao || '').toLowerCase().includes((columnFilters.dataEmissao || '').toLowerCase());
+    const matchesNumeroNF = String(item.numeroNF || '').toLowerCase().includes((columnFilters.numeroNF || '').toLowerCase());
                           
-    return matchesSearch && matchesStatus && matchesId && matchesCredor && matchesCnpj && matchesApropriacao && matchesVencimento && matchesValor && matchesVinculo && matchesStatusZepp && matchesNoRomaneio && matchesObservacao && matchesAcao && matchesTipoDocumento && matchesDataEmissao;
+    return matchesSearch && matchesStatus && matchesId && matchesCredor && matchesCnpj && matchesApropriacao && matchesVencimento && matchesValor && matchesVinculo && matchesStatusZepp && matchesNoRomaneio && matchesObservacao && matchesAcao && matchesTipoDocumento && matchesDataEmissao && matchesNumeroNF;
   });
 
   const getBadgeClass = (acao) => {
@@ -110,6 +111,7 @@ export default function Dashboard({ data, kpi, onReimport, categoryName }) {
         Credor: d.credor,
         ...(categoryName === 'Títulos' ? { 'Data de Emissão': d.dataEmissao } : {}),
         Vencimento: d.vencimento,
+        ...(categoryName === 'Títulos' ? { 'Nº da NF': d.numeroNF } : {}),
         Valor: d.valor,
         'Status Zepp': d.statusZepp,
         'Nº Romaneio': d.noRomaneio,
@@ -147,6 +149,7 @@ export default function Dashboard({ data, kpi, onReimport, categoryName }) {
         Credor: d.credor,
         ...(categoryName === 'Títulos' ? { 'Data de Emissão': d.dataEmissao } : {}),
         Vencimento: d.vencimento,
+        ...(categoryName === 'Títulos' ? { 'Nº da NF': d.numeroNF } : {}),
         Valor: d.valor,
         'Status Zepp': d.statusZepp,
         'Nº Romaneio': d.noRomaneio,
@@ -166,7 +169,7 @@ export default function Dashboard({ data, kpi, onReimport, categoryName }) {
     const tableColumn = categoryName === 'Pedidos' 
       ? ["Pedido", "Credor", "CNPJ", "Apropriação", "Valor", "Vínc. Faturamento", "Status Zepp", "Observação", "Ação"]
       : categoryName === 'Títulos'
-        ? [getIDHeaderName(), "Tipo de Documento", "Credor", "Data de Emissão", "Vencimento", "Valor", "Status Zepp", "Romaneio", "Ação"]
+        ? [getIDHeaderName(), "Tipo de Documento", "Credor", "Data de Emissão", "Vencimento", "Nº da NF", "Valor", "Status Zepp", "Romaneio", "Ação"]
         : [getIDHeaderName(), "Credor", "Vencimento", "Valor", "Status Zepp", "Romaneio", "Ação"];
     const tableRows = [];
 
@@ -174,7 +177,7 @@ export default function Dashboard({ data, kpi, onReimport, categoryName }) {
       const rowData = categoryName === 'Pedidos'
         ? [item.id, item.credor, item.cnpj, item.apropriacao, formatCurrency(item.valor), item.vinculoFaturamentoDireto, item.statusZepp, item.observacao, item.acao]
         : categoryName === 'Títulos'
-          ? [item.id, item.tipoDocumento, item.credor, item.dataEmissao, item.vencimento, formatCurrency(item.valor), item.statusZepp, item.noRomaneio, item.acao]
+          ? [item.id, item.tipoDocumento, item.credor, item.dataEmissao, item.vencimento, item.numeroNF, formatCurrency(item.valor), item.statusZepp, item.noRomaneio, item.acao]
           : [item.id, item.credor, item.vencimento, formatCurrency(item.valor), item.statusZepp, item.noRomaneio, item.acao];
       tableRows.push(rowData);
     });
@@ -328,6 +331,12 @@ export default function Dashboard({ data, kpi, onReimport, categoryName }) {
                     <div>Vencimento</div>
                     <input type="text" placeholder="Filtrar..." value={columnFilters.vencimento} onChange={(e) => handleColumnFilterChange('vencimento', e.target.value)} className="col-filter" />
                   </th>
+                  {categoryName === 'Títulos' && (
+                    <th>
+                      <div>Nº da NF</div>
+                      <input type="text" placeholder="Filtrar..." value={columnFilters.numeroNF} onChange={(e) => handleColumnFilterChange('numeroNF', e.target.value)} className="col-filter" />
+                    </th>
+                  )}
                   <th>
                     <div>Valor</div>
                     <input type="text" placeholder="Filtrar..." value={columnFilters.valor} onChange={(e) => handleColumnFilterChange('valor', e.target.value)} className="col-filter" />
@@ -390,6 +399,9 @@ export default function Dashboard({ data, kpi, onReimport, categoryName }) {
                           <td>{item.dataEmissao}</td>
                         )}
                         <td>{item.vencimento}</td>
+                        {categoryName === 'Títulos' && (
+                          <td>{item.numeroNF}</td>
+                        )}
                         <td style={{ fontWeight: 600 }}>{formatCurrency(item.valor)}</td>
                         <td>{item.statusZepp}</td>
                         <td>{item.noRomaneio}</td>
