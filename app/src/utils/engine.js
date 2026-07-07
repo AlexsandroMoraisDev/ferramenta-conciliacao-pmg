@@ -72,6 +72,16 @@ const buildCredorValorKey = (row) => {
   return `${credorAbrev}_${valor}`;
 };
 
+const filterFallbackMatches = (matches, idSienge) => {
+  if (!idSienge) return matches;
+  return matches.filter(r => {
+    if (!r._extractedId) return true;
+    const extractedStr = String(r._extractedId).toLowerCase();
+    const idStr = String(idSienge).toLowerCase();
+    return extractedStr.includes(idStr) || idStr.includes(extractedStr);
+  });
+};
+
 // ---------------------------------------------------------
 // LÓGICA DE TÍTULOS (BLINDADA 100%)
 // ---------------------------------------------------------
@@ -108,16 +118,6 @@ const processTitulos = (siengeData, zeppData, romaneioData) => {
 
   const results = [];
   let kpi = { total: 0, pronto: 0, aprovacao: 0, acao: 0 };
-
-  const filterFallbackMatches = (matches, idSienge) => {
-    if (!idSienge) return matches;
-    return matches.filter(r => {
-      if (!r._extractedId) return true;
-      const extractedStr = String(r._extractedId).toLowerCase();
-      const idStr = String(idSienge).toLowerCase();
-      return extractedStr.includes(idStr) || idStr.includes(extractedStr);
-    });
-  };
 
   siengeData.forEach(siengeRow => {
     if (!siengeRow['Título'] && !siengeRow['Credor']) return;
@@ -183,11 +183,12 @@ const processContratos = (siengeData, zeppData, romaneioData) => {
   const zeppMapID = {};
   const zeppMapCV = {};
   zeppData.forEach(row => {
+    const id = String(row['Código Origem'] || '').split('/')[0].split('-').pop().trim(); // Ex: "CLSF / 200-3-039.1" -> "039.1" - heurística de ID
+    row._extractedId = id;
     const cv = buildCredorValorKey(row);
     if (!zeppMapCV[cv]) zeppMapCV[cv] = [];
     zeppMapCV[cv].push(row);
 
-    const id = String(row['Código Origem'] || '').split('/')[0].split('-').pop().trim(); // Ex: "CLSF / 200-3-039.1" -> "039.1" - heurística de ID
     if (id) {
       if (!zeppMapID[id]) zeppMapID[id] = [];
       zeppMapID[id].push(row);
@@ -197,11 +198,12 @@ const processContratos = (siengeData, zeppData, romaneioData) => {
   const romMapID = {};
   const romMapCV = {};
   romaneioData.forEach(row => {
+    const id = String(row['ID CONTRATO.'] || '').trim();
+    row._extractedId = id;
     const cv = buildCredorValorKey(row);
     if (!romMapCV[cv]) romMapCV[cv] = [];
     romMapCV[cv].push(row);
 
-    const id = String(row['ID CONTRATO.'] || '').trim();
     if (id) {
       if (!romMapID[id]) romMapID[id] = [];
       romMapID[id].push(row);
@@ -216,8 +218,13 @@ const processContratos = (siengeData, zeppData, romaneioData) => {
     const idSienge = String(siengeRow['Contrato'] || siengeRow['Número acordo de preços'] || '').trim();
     const cv = buildCredorValorKey(siengeRow);
 
-    const zeppMatches = (idSienge && zeppMapID[idSienge]) ? zeppMapID[idSienge] : (zeppMapCV[cv] || []);
-    const romaneioMatches = (idSienge && romMapID[idSienge]) ? romMapID[idSienge] : (romMapCV[cv] || []);
+    const zeppMatches = (idSienge && zeppMapID[idSienge]) 
+      ? zeppMapID[idSienge] 
+      : filterFallbackMatches(zeppMapCV[cv] || [], idSienge);
+      
+    const romaneioMatches = (idSienge && romMapID[idSienge]) 
+      ? romMapID[idSienge] 
+      : filterFallbackMatches(romMapCV[cv] || [], idSienge);
 
     const inZepp = zeppMatches.length > 0;
     const inRomaneio = romaneioMatches.length > 0;
@@ -264,11 +271,12 @@ const processPedidos = (siengeData, zeppData, romaneioData) => {
   const zeppMapID = {};
   const zeppMapCV = {};
   zeppData.forEach(row => {
+    const id = String(row['Código Origem'] || '').trim();
+    row._extractedId = id;
     const cv = buildCredorValorKey(row);
     if (!zeppMapCV[cv]) zeppMapCV[cv] = [];
     zeppMapCV[cv].push(row);
 
-    const id = String(row['Código Origem'] || '').trim();
     if (id) {
       if (!zeppMapID[id]) zeppMapID[id] = [];
       zeppMapID[id].push(row);
@@ -278,11 +286,12 @@ const processPedidos = (siengeData, zeppData, romaneioData) => {
   const romMapID = {};
   const romMapCV = {};
   romaneioData.forEach(row => {
+    const id = String(row['PEDIDO'] || '').trim();
+    row._extractedId = id;
     const cv = buildCredorValorKey(row);
     if (!romMapCV[cv]) romMapCV[cv] = [];
     romMapCV[cv].push(row);
 
-    const id = String(row['PEDIDO'] || '').trim();
     if (id) {
       if (!romMapID[id]) romMapID[id] = [];
       romMapID[id].push(row);
@@ -301,9 +310,12 @@ const processPedidos = (siengeData, zeppData, romaneioData) => {
     const idSiengeNum = idSienge.replace(/\D/g, ''); // Apenas números
     
     // Tenta encontrar ID exato ou contendo o número
-    const zeppMatches = zeppMapCV[cv] || []; // Para Zepp, CV é mais seguro, a menos q Code Origem bata
+    // Tenta encontrar ID exato ou contendo o número
+    const zeppMatches = filterFallbackMatches(zeppMapCV[cv] || [], idSiengeNum);
     const romaneioMatches = (idSienge && romMapID[idSienge]) ? romMapID[idSienge] : (
-       Object.keys(romMapID).find(k => k.includes(idSiengeNum)) ? romMapID[Object.keys(romMapID).find(k => k.includes(idSiengeNum))] : (romMapCV[cv] || [])
+       Object.keys(romMapID).find(k => k.includes(idSiengeNum)) 
+        ? romMapID[Object.keys(romMapID).find(k => k.includes(idSiengeNum))] 
+        : filterFallbackMatches(romMapCV[cv] || [], idSiengeNum)
     );
 
     const inZepp = zeppMatches.length > 0;
