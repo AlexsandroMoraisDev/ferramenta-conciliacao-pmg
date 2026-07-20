@@ -521,24 +521,52 @@ export const processConciliacaoSaldos = async (files) => {
   const findMatch = (nf, fornecedorName, cnpjVal) => {
      const nfStr = String(nf || '').trim();
      const cnpjStr = String(cnpjVal || '').replace(/\D/g, '');
-     const fornStr = String(fornecedorName || '').trim().toLowerCase();
+     let fornStr = String(fornecedorName || '').trim().toLowerCase();
+     fornStr = fornStr.replace(/\s+/g, ' ');
      
-     if (!nfStr) return null;
+     if (!nfStr && !fornStr && !cnpjStr) return null;
 
-     if (cnpjStr) {
-        const k1 = `${nfStr}||${cnpjStr}`;
-        if (groupedPlan1[k1]) return groupedPlan1[k1];
-     }
-     
-     if (fornStr) {
-        const k2 = `${nfStr}||${fornStr}`;
-        if (groupedPlan1[k2]) return groupedPlan1[k2];
-        
-        for (const [key, val] of Object.entries(groupedPlan1)) {
-           if (val.nf === nfStr && (fornStr.includes(val.fornecedor) || val.fornecedor.includes(fornStr))) {
-               return val;
-           }
-        }
+     if (nfStr) {
+         if (cnpjStr) {
+            const k1 = `${nfStr}||${cnpjStr}`;
+            if (groupedPlan1[k1]) return groupedPlan1[k1];
+         }
+         
+         if (fornStr) {
+            const k2 = `${nfStr}||${fornStr}`;
+            if (groupedPlan1[k2]) return groupedPlan1[k2];
+            
+            for (const [key, val] of Object.entries(groupedPlan1)) {
+               if (val.nf === nfStr && (fornStr.includes(val.fornecedor) || val.fornecedor.includes(fornStr))) {
+                   return val;
+               }
+            }
+         }
+     } else if (fornStr) {
+         let totalSinal = 0;
+         let totalFuturo = 0;
+         let totalDescontado = 0;
+         let contrato = '';
+         let found = false;
+
+         for (const [key, val] of Object.entries(groupedPlan1)) {
+             if (fornStr.includes(val.fornecedor) || val.fornecedor.includes(fornStr)) {
+                 totalSinal += val.valorAdiantamentoSinal || 0;
+                 totalFuturo += val.valorAdiantamentoFuturo || 0;
+                 totalDescontado += val.valorDescontado || 0;
+                 if (val.contrato && !contrato) contrato = val.contrato;
+                 found = true;
+             }
+         }
+         if (found) {
+             return {
+                 isAdiantamentoSummary: true,
+                 valorAdiantamentoSinal: totalSinal,
+                 valorAdiantamentoFuturo: totalFuturo,
+                 valorDescontado: totalDescontado,
+                 contrato: contrato
+             };
+         }
      }
      return null;
   };
@@ -553,7 +581,7 @@ export const processConciliacaoSaldos = async (files) => {
   const fornecedoresSheet = getSheetByKeyword('fornecedor');
   const retencaoSheet = getSheetByKeyword('reten');
 
-  const processSheet = (sheetName, targetHeadersMap) => {
+  const processSheet = (sheetName, targetHeadersMap, sheetType) => {
      if (!sheetName) return;
      const ws = wb2.Sheets[sheetName];
      const aoa = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
@@ -563,7 +591,7 @@ export const processConciliacaoSaldos = async (files) => {
      for (let i = 0; i < Math.min(20, aoa.length); i++) {
          const row = aoa[i];
          const rowStr = row.map(c => String(c).toLowerCase()).join(' ');
-         if (rowStr.includes('nf') || rowStr.includes('nota') || rowStr.includes('fornecedor')) {
+         if (rowStr.includes('valor de adiantamento') || rowStr.includes('valor líquido') || rowStr.includes('valor liquido') || rowStr.includes('valor de retenção')) {
              headerRowIdx = i;
              row.forEach((col, idx) => {
                  if (col) headerMap[String(col).trim().toLowerCase()] = idx;
@@ -574,9 +602,21 @@ export const processConciliacaoSaldos = async (files) => {
 
      if (headerRowIdx === -1) return;
 
-     const nfIdx = Object.keys(headerMap).find(k => k === 'nf' || k.includes('nota fiscal') || k === 'nº nf' || k.includes('documento')) ? headerMap[Object.keys(headerMap).find(k => k === 'nf' || k.includes('nota fiscal') || k === 'nº nf' || k.includes('documento'))] : -1;
-     const fornIdx = Object.keys(headerMap).find(k => k.includes('fornecedor') || k.includes('razão social') || k.includes('credor')) ? headerMap[Object.keys(headerMap).find(k => k.includes('fornecedor') || k.includes('razão social') || k.includes('credor'))] : -1;
-     const cnpjIdx = Object.keys(headerMap).find(k => k.includes('cnpj')) ? headerMap[Object.keys(headerMap).find(k => k.includes('cnpj'))] : -1;
+     let nfIdx = -1;
+     let fornIdx = -1;
+     const descIdx = Object.keys(headerMap).find(k => k.includes('descri')) ? headerMap[Object.keys(headerMap).find(k => k.includes('descri'))] : -1;
+     const obsIdx = Object.keys(headerMap).find(k => k === 'obs') ? headerMap[Object.keys(headerMap).find(k => k === 'obs')] : -1;
+     const directNfIdx = Object.keys(headerMap).find(k => k === 'nf') ? headerMap[Object.keys(headerMap).find(k => k === 'nf')] : -1;
+
+     if (sheetType === 'adiantamento') {
+         fornIdx = descIdx;
+     } else if (sheetType === 'fornecedores') {
+         nfIdx = directNfIdx;
+         fornIdx = descIdx;
+     } else if (sheetType === 'retencao') {
+         nfIdx = obsIdx;
+         fornIdx = descIdx;
+     }
 
      const targetIndices = {};
      for (const [key, propName] of Object.entries(targetHeadersMap)) {
@@ -588,13 +628,30 @@ export const processConciliacaoSaldos = async (files) => {
 
      for (let i = headerRowIdx + 1; i < aoa.length; i++) {
          const row = aoa[i];
-         const nfVal = nfIdx !== -1 ? row[nfIdx] : '';
-         if (!nfVal) continue;
+         if (!row || row.length === 0) continue;
+         
+         let nfVal = '';
+         let fornVal = '';
 
-         const fornVal = fornIdx !== -1 ? row[fornIdx] : '';
-         const cnpjVal = cnpjIdx !== -1 ? row[cnpjIdx] : '';
+         if (sheetType === 'adiantamento') {
+             fornVal = fornIdx !== -1 ? String(row[fornIdx]).trim() : '';
+             if (!fornVal) continue;
+         } else if (sheetType === 'fornecedores') {
+             nfVal = nfIdx !== -1 ? String(row[nfIdx]).trim() : '';
+             let rawDesc = fornIdx !== -1 ? String(row[fornIdx]).trim() : '';
+             if (rawDesc.includes('-')) {
+                 fornVal = rawDesc.split('-').slice(1).join('-').trim();
+             } else {
+                 fornVal = rawDesc;
+             }
+             if (!nfVal) continue;
+         } else if (sheetType === 'retencao') {
+             nfVal = nfIdx !== -1 ? String(row[nfIdx]).trim() : '';
+             fornVal = fornIdx !== -1 ? String(row[fornIdx]).trim() : '';
+             if (!nfVal) continue;
+         }
 
-         const match = findMatch(nfVal, fornVal, cnpjVal);
+         const match = findMatch(nfVal, fornVal, '');
          kpi.total++;
          
          let acao = 'Pendente de validação';
@@ -606,7 +663,7 @@ export const processConciliacaoSaldos = async (files) => {
              statusZepp = 'Aprovado';
              for (const [propName, colIdx] of Object.entries(targetIndices)) {
                  if (propName === 'valorAdiantamento') {
-                     row[colIdx] = match.tipoAdiantamento.includes('FUTURO') ? match.valorAdiantamentoFuturo : match.valorAdiantamentoSinal;
+                     row[colIdx] = match.isAdiantamentoSummary ? (match.valorAdiantamentoSinal + match.valorAdiantamentoFuturo) : (match.tipoAdiantamento && match.tipoAdiantamento.includes('FUTURO') ? match.valorAdiantamentoFuturo : match.valorAdiantamentoSinal);
                  } else if (propName === 'valorDescontado') {
                      row[colIdx] = match.valorDescontado;
                  } else if (propName === 'contrato') {
@@ -622,7 +679,7 @@ export const processConciliacaoSaldos = async (files) => {
          }
 
          results.push({
-             id: nfVal,
+             id: nfVal || '-',
              credor: fornVal,
              vencimento: '-',
              valor: 0,
@@ -643,14 +700,14 @@ export const processConciliacaoSaldos = async (files) => {
           'Valor Descontado': 'valorDescontado',
           'Contrato/Pedido': 'contrato',
           'Contrato': 'contrato'
-      });
+      }, 'adiantamento');
   }
 
   if (fornecedoresSheet) {
       processSheet(fornecedoresSheet, {
           'Valor liquido': 'valorLiquido',
           'Valor líquido': 'valorLiquido'
-      });
+      }, 'fornecedores');
   }
 
   if (retencaoSheet) {
@@ -659,7 +716,7 @@ export const processConciliacaoSaldos = async (files) => {
           'Retenção': 'valorRetencao',
           'Contrato': 'contrato',
           'Contrato/Pedido': 'contrato'
-      });
+      }, 'retencao');
   }
 
   return { results, kpi, finalWorkbook: wb2 };
