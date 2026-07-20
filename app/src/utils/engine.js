@@ -492,7 +492,7 @@ export const processConciliacaoSaldos = async (files) => {
 
   const plan1Rows = plan1Data.map(r => ({
      nf: String(r['K'] || '').trim(),
-     fornecedor: String(r['I'] || '').trim().toLowerCase(),
+     fornecedor: String(r['I'] || '').trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, ' '),
      cnpj: String(r['J'] || '').replace(/\D/g, ''),
      tipoAdiantamento: String(r['P'] || '').trim().toUpperCase(),
      valorAdiantamentoSinal: normalizeNum(r['AC']),
@@ -518,11 +518,12 @@ export const processConciliacaoSaldos = async (files) => {
      }
   });
 
+  const normalizeText = (text) => String(text || '').trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, ' ');
+
   const findMatch = (nf, fornecedorName, cnpjVal) => {
      const nfStr = String(nf || '').trim();
      const cnpjStr = String(cnpjVal || '').replace(/\D/g, '');
-     let fornStr = String(fornecedorName || '').trim().toLowerCase();
-     fornStr = fornStr.replace(/\s+/g, ' ');
+     const fornStr = normalizeText(fornecedorName);
      
      if (!nfStr && !fornStr && !cnpjStr) return null;
 
@@ -577,8 +578,10 @@ export const processConciliacaoSaldos = async (files) => {
   const sheets = wb2.SheetNames;
   const getSheetByKeyword = (keyword) => sheets.find(s => s.toLowerCase().includes(keyword.toLowerCase()));
 
+  const sheetsNames = wb2.SheetNames;
+  const getSheetByKeywordExact = (keyword) => sheetsNames.find(s => s.toLowerCase() === keyword.toLowerCase());
   const adiantamentoSheet = getSheetByKeyword('adiantamento');
-  const fornecedoresSheet = getSheetByKeyword('fornecedor');
+  const fornecedoresSheet = getSheetByKeywordExact('fornecedores') || sheetsNames.find(s => s.toLowerCase().includes('fornecedor') && !s.toLowerCase().includes('adiantamento'));
   const retencaoSheet = getSheetByKeyword('reten');
 
   const processSheet = (sheetName, targetHeadersMap, sheetType) => {
@@ -681,11 +684,14 @@ export const processConciliacaoSaldos = async (files) => {
          results.push({
              id: nfVal || '-',
              credor: fornVal,
-             vencimento: '-',
-             valor: 0,
+             vencimento: match && match.contrato ? match.contrato : '-', // Contrato
+             valor: match ? (match.valorLiquido || 0) : 0,
+             valorAdiantamento: match ? ((match.valorAdiantamentoSinal || 0) + (match.valorAdiantamentoFuturo || 0)) : 0,
+             valorDescontado: match ? (match.valorDescontado || 0) : 0,
+             valorRetencao: match ? (match.valorRetencao || 0) : 0,
              statusZepp,
              noRomaneio: sheetName,
-             observacao: 'Aba: ' + sheetName,
+             observacao: '-',
              acao,
              originalSienge: {}
          });
