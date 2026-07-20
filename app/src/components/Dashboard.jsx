@@ -4,7 +4,7 @@ import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 
-export default function Dashboard({ data, kpi, onReimport, categoryName }) {
+export default function Dashboard({ data, kpi, onReimport, categoryName, finalWorkbook }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('Todos os Status');
   const [columnFilters, setColumnFilters] = useState({
@@ -92,6 +92,10 @@ export default function Dashboard({ data, kpi, onReimport, categoryName }) {
   };
 
   const exportExcel = () => {
+    if (categoryName === 'Conciliação Saldos Contábeis' && finalWorkbook) {
+      XLSX.writeFile(finalWorkbook, `Conciliacao_Saldos_Contabeis.xlsx`);
+      return;
+    }
     const ws = XLSX.utils.json_to_sheet(filteredData.map(d => {
       if (categoryName === 'Pedidos') {
         return {
@@ -219,15 +223,17 @@ export default function Dashboard({ data, kpi, onReimport, categoryName }) {
           <h3 style={{ color: 'var(--danger-color)' }}>Ação Necessária</h3>
           <div className="value" style={{ color: 'var(--danger-color)' }}>{kpi.acao}</div>
         </div>
-        <div 
-          className="kpi-card clickable" 
-          style={{ borderBottom: '4px solid #8b5cf6' }}
-          onClick={exportFaltaRomaneio}
-          title="Clique para baixar a planilha apenas com itens faltando no Romaneio"
-        >
-          <h3 style={{ color: '#8b5cf6' }}>Falta Romaneio (Baixar)</h3>
-          <div className="value" style={{ color: '#8b5cf6' }}>{faltaRomaneioCount}</div>
-        </div>
+        {categoryName !== 'Conciliação Saldos Contábeis' && (
+          <div 
+            className="kpi-card clickable" 
+            style={{ borderBottom: '4px solid #8b5cf6' }}
+            onClick={exportFaltaRomaneio}
+            title="Clique para baixar a planilha apenas com itens faltando no Romaneio"
+          >
+            <h3 style={{ color: '#8b5cf6' }}>Falta Romaneio (Baixar)</h3>
+            <div className="value" style={{ color: '#8b5cf6' }}>{faltaRomaneioCount}</div>
+          </div>
+        )}
       </div>
 
       <div className="table-container">
@@ -258,9 +264,11 @@ export default function Dashboard({ data, kpi, onReimport, categoryName }) {
             <button className="btn" onClick={exportExcel}>
               <FileText size={16} /> Excel
             </button>
-            <button className="btn" onClick={exportPDF}>
-              <Download size={16} /> PDF
-            </button>
+            {categoryName !== 'Conciliação Saldos Contábeis' && (
+              <button className="btn" onClick={exportPDF}>
+                <Download size={16} /> PDF
+              </button>
+            )}
           </div>
         </div>
 
