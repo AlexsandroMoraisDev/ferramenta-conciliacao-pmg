@@ -275,7 +275,50 @@ export default function Dashboard({ data, kpi, onReimport, categoryName, finalWo
         <div style={{ overflowX: 'auto' }}>
           <table>
             <thead>
-              {categoryName === 'Pedidos' ? (
+              {categoryName === 'Conciliação Saldos Contábeis' ? (
+                <tr>
+                  <th>
+                    <div>Aba / Romaneio</div>
+                    <input type="text" placeholder="Filtrar..." value={columnFilters.noRomaneio} onChange={(e) => handleColumnFilterChange('noRomaneio', e.target.value)} className="col-filter" />
+                  </th>
+                  <th>
+                    <div>NF</div>
+                    <input type="text" placeholder="Filtrar..." value={columnFilters.id} onChange={(e) => handleColumnFilterChange('id', e.target.value)} className="col-filter" />
+                  </th>
+                  <th>
+                    <div>Fornecedor / Descrição</div>
+                    <input type="text" placeholder="Filtrar..." value={columnFilters.credor} onChange={(e) => handleColumnFilterChange('credor', e.target.value)} className="col-filter" />
+                  </th>
+                  <th>
+                    <div>Contrato</div>
+                    <input type="text" placeholder="Filtrar..." value={columnFilters.vencimento} onChange={(e) => handleColumnFilterChange('vencimento', e.target.value)} className="col-filter" />
+                  </th>
+                  <th>
+                    <div>Adiantamento (Sinal/Futuro)</div>
+                    <input type="text" placeholder="Filtrar..." value={columnFilters.valorAdiantamento} onChange={(e) => handleColumnFilterChange('valorAdiantamento', e.target.value)} className="col-filter" />
+                  </th>
+                  <th>
+                    <div>Descontado</div>
+                    <input type="text" placeholder="Filtrar..." value={columnFilters.valorDescontado} onChange={(e) => handleColumnFilterChange('valorDescontado', e.target.value)} className="col-filter" />
+                  </th>
+                  <th>
+                    <div>Valor Líquido</div>
+                    <input type="text" placeholder="Filtrar..." value={columnFilters.valor} onChange={(e) => handleColumnFilterChange('valor', e.target.value)} className="col-filter" />
+                  </th>
+                  <th>
+                    <div>Valor Retenção</div>
+                    <input type="text" placeholder="Filtrar..." value={columnFilters.valorRetencao} onChange={(e) => handleColumnFilterChange('valorRetencao', e.target.value)} className="col-filter" />
+                  </th>
+                  <th>
+                    <div>Status Zepp</div>
+                    <input type="text" placeholder="Filtrar..." value={columnFilters.statusZepp} onChange={(e) => handleColumnFilterChange('statusZepp', e.target.value)} className="col-filter" />
+                  </th>
+                  <th>
+                    <div>Ação Requerida</div>
+                    <input type="text" placeholder="Filtrar..." value={columnFilters.acao} onChange={(e) => handleColumnFilterChange('acao', e.target.value)} className="col-filter" />
+                  </th>
+                </tr>
+              ) : categoryName === 'Pedidos' ? (
                 <tr>
                   <th>
                     <div>PEDIDO</div>
@@ -379,7 +422,24 @@ export default function Dashboard({ data, kpi, onReimport, categoryName, finalWo
               ) : (
                 filteredData.map((item, index) => (
                   <tr key={index}>
-                    {categoryName === 'Pedidos' ? (
+                    {categoryName === 'Conciliação Saldos Contábeis' ? (
+                      <>
+                        <td>{item.noRomaneio}</td>
+                        <td>{item.id}</td>
+                        <td style={{ fontWeight: 500 }}>{item.credor}</td>
+                        <td>{item.vencimento}</td>
+                        <td style={{ fontWeight: 600 }}>{formatCurrency(item.valorAdiantamento)}</td>
+                        <td style={{ fontWeight: 600 }}>{formatCurrency(item.valorDescontado)}</td>
+                        <td style={{ fontWeight: 600 }}>{formatCurrency(item.valor)}</td>
+                        <td style={{ fontWeight: 600 }}>{formatCurrency(item.valorRetencao)}</td>
+                        <td>{item.statusZepp}</td>
+                        <td>
+                          <span className={`badge ${getBadgeClass(item.acao)}`}>
+                            {item.acao}
+                          </span>
+                        </td>
+                      </>
+                    ) : categoryName === 'Pedidos' ? (
                       <>
                         <td>{item.id}</td>
                         <td style={{ fontWeight: 500 }}>{item.credor}</td>
