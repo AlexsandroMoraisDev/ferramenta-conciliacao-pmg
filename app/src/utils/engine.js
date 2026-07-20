@@ -520,6 +520,25 @@ export const processConciliacaoSaldos = async (files) => {
 
   const normalizeText = (text) => String(text || '').trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, ' ');
 
+  const cleanForInclude = (t) => t.replace(/[^a-z0-9]/g, '');
+  const checkSupplierMatch = (s1, s2, isStrict = false) => {
+      if (!s1 || !s2) return false;
+      const c1 = cleanForInclude(s1);
+      const c2 = cleanForInclude(s2);
+      if (c1 && c2 && (c1.includes(c2) || c2.includes(c1))) return true;
+
+      if (isStrict) return false;
+
+      const w1 = s1.replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter(w => w.length > 2);
+      const w2 = s2.replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter(w => w.length > 2);
+      let commonCount = 0;
+      for (let w of w1) {
+          if (w2.includes(w)) commonCount++;
+      }
+      if (w1.length <= 1 || w2.length <= 1) return commonCount >= 1;
+      return commonCount >= 2;
+  };
+
   const findMatch = (nf, fornecedorName, cnpjVal) => {
      const nfStr = String(nf || '').trim();
      const cnpjStr = String(cnpjVal || '').replace(/\D/g, '');
@@ -538,7 +557,7 @@ export const processConciliacaoSaldos = async (files) => {
             if (groupedPlan1[k2]) return groupedPlan1[k2];
             
             for (const [key, val] of Object.entries(groupedPlan1)) {
-               if (val.nf === nfStr && (fornStr.includes(val.fornecedor) || val.fornecedor.includes(fornStr))) {
+               if (val.nf === nfStr && checkSupplierMatch(fornStr, val.fornecedor, false)) {
                    return val;
                }
             }
@@ -551,7 +570,7 @@ export const processConciliacaoSaldos = async (files) => {
          let found = false;
 
          for (const [key, val] of Object.entries(groupedPlan1)) {
-             if (fornStr.includes(val.fornecedor) || val.fornecedor.includes(fornStr)) {
+             if (val.fornecedor && checkSupplierMatch(fornStr, val.fornecedor, true)) {
                  totalSinal += val.valorAdiantamentoSinal || 0;
                  totalFuturo += val.valorAdiantamentoFuturo || 0;
                  totalDescontado += val.valorDescontado || 0;
