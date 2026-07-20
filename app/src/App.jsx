@@ -5,7 +5,7 @@ import Dashboard from './components/Dashboard';
 import { processConciliacao } from './utils/engine';
 import './index.css';
 
-const TABS = ['Títulos', 'Contratos', 'Pedidos', 'Medições', 'Consolidação CRIVO'];
+const TABS = ['Títulos', 'Contratos', 'Pedidos', 'Medições', 'Consolidação CRIVO', 'Conciliação Saldos Contábeis'];
 
 class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -47,7 +47,8 @@ function App() {
     'Contratos': { imported: false, data: [], kpi: null },
     'Pedidos': { imported: false, data: [], kpi: null },
     'Medições': { imported: false, data: [], kpi: null },
-    'Consolidação CRIVO': { imported: false, data: [], kpi: null }
+    'Consolidação CRIVO': { imported: false, data: [], kpi: null },
+    'Conciliação Saldos Contábeis': { imported: false, data: [], kpi: null }
   });
   const [isProcessing, setIsProcessing] = useState(false);
 
