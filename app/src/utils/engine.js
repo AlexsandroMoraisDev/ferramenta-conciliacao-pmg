@@ -19,6 +19,25 @@ export const readExcelFile = (file) => {
   });
 };
 
+export const readExcelFileLetterHeaders = (file) => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const data = new Uint8Array(e.target.result);
+        const workbook = XLSX.read(data, { type: 'array' });
+        const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+        const json = XLSX.utils.sheet_to_json(worksheet, { header: "A", defval: '', raw: true });
+        resolve(json);
+      } catch (err) {
+        reject(err);
+      }
+    };
+    reader.onerror = (err) => reject(err);
+    reader.readAsArrayBuffer(file);
+  });
+};
+
 const normalizeStr = (str) => {
   if (str === undefined || str === null) return '';
   return String(str).toLowerCase().trim();
@@ -446,7 +465,202 @@ export const processConciliacao = async (files, categoryName = 'Títulos') => {
       return processPedidos(siengeData, zeppData, romaneioData);
     case 'Medições':
       return processMedicoes(siengeData, zeppData, romaneioData);
+    case 'Conciliação Saldos Contábeis':
+      return processConciliacaoSaldos(files);
     default:
       return processTitulos(siengeData, zeppData, romaneioData);
   }
+};
+
+// ---------------------------------------------------------
+// LÓGICA DE CONCILIAÇÃO SALDOS CONTÁBEIS
+// ---------------------------------------------------------
+export const processConciliacaoSaldos = async (files) => {
+  if (!files.planilha1 || !files.planilha2) {
+     return { results: [], kpi: { total: 0, pronto: 0, aprovacao: 0, acao: 0 } };
+  }
+
+  const plan1Data = await readExcelFileLetterHeaders(files.planilha1);
+  
+  const plan2DataBuffer = await new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => resolve(new Uint8Array(e.target.result));
+    reader.onerror = (e) => reject(e);
+    reader.readAsArrayBuffer(files.planilha2);
+  });
+  const wb2 = XLSX.read(plan2DataBuffer, { type: 'array', cellDates: true, cellStyles: true });
+
+  const plan1Rows = plan1Data.map(r => ({
+     nf: String(r['K'] || '').trim(),
+     fornecedor: String(r['I'] || '').trim().toLowerCase(),
+     cnpj: String(r['J'] || '').replace(/\D/g, ''),
+     tipoAdiantamento: String(r['P'] || '').trim().toUpperCase(),
+     valorAdiantamentoSinal: normalizeNum(r['AC']),
+     valorAdiantamentoFuturo: normalizeNum(r['AD']),
+     valorDescontado: normalizeNum(r['U']),
+     contrato: String(r['AI'] || '').trim(),
+     valorLiquido: normalizeNum(r['X']),
+     valorRetencao: normalizeNum(r['T'])
+  })).filter(r => r.nf !== '');
+
+  const groupedPlan1 = {};
+  plan1Rows.forEach(row => {
+     const suppKey = row.cnpj ? row.cnpj : row.fornecedor;
+     const key = `${row.nf}||${suppKey}`;
+     if (!groupedPlan1[key]) {
+        groupedPlan1[key] = { ...row };
+     } else {
+        groupedPlan1[key].valorAdiantamentoSinal += row.valorAdiantamentoSinal;
+        groupedPlan1[key].valorAdiantamentoFuturo += row.valorAdiantamentoFuturo;
+        groupedPlan1[key].valorDescontado += row.valorDescontado;
+        groupedPlan1[key].valorLiquido += row.valorLiquido;
+        groupedPlan1[key].valorRetencao += row.valorRetencao;
+     }
+  });
+
+  const findMatch = (nf, fornecedorName, cnpjVal) => {
+     const nfStr = String(nf || '').trim();
+     const cnpjStr = String(cnpjVal || '').replace(/\D/g, '');
+     const fornStr = String(fornecedorName || '').trim().toLowerCase();
+     
+     if (!nfStr) return null;
+
+     if (cnpjStr) {
+        const k1 = `${nfStr}||${cnpjStr}`;
+        if (groupedPlan1[k1]) return groupedPlan1[k1];
+     }
+     
+     if (fornStr) {
+        const k2 = `${nfStr}||${fornStr}`;
+        if (groupedPlan1[k2]) return groupedPlan1[k2];
+        
+        for (const [key, val] of Object.entries(groupedPlan1)) {
+           if (val.nf === nfStr && (fornStr.includes(val.fornecedor) || val.fornecedor.includes(fornStr))) {
+               return val;
+           }
+        }
+     }
+     return null;
+  };
+
+  const results = [];
+  let kpi = { total: 0, pronto: 0, aprovacao: 0, acao: 0 };
+
+  const sheets = wb2.SheetNames;
+  const getSheetByKeyword = (keyword) => sheets.find(s => s.toLowerCase().includes(keyword.toLowerCase()));
+
+  const adiantamentoSheet = getSheetByKeyword('adiantamento');
+  const fornecedoresSheet = getSheetByKeyword('fornecedor');
+  const retencaoSheet = getSheetByKeyword('reten');
+
+  const processSheet = (sheetName, targetHeadersMap) => {
+     if (!sheetName) return;
+     const ws = wb2.Sheets[sheetName];
+     const aoa = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+     
+     let headerRowIdx = -1;
+     let headerMap = {};
+     for (let i = 0; i < Math.min(20, aoa.length); i++) {
+         const row = aoa[i];
+         const rowStr = row.map(c => String(c).toLowerCase()).join(' ');
+         if (rowStr.includes('nf') || rowStr.includes('nota') || rowStr.includes('fornecedor')) {
+             headerRowIdx = i;
+             row.forEach((col, idx) => {
+                 if (col) headerMap[String(col).trim().toLowerCase()] = idx;
+             });
+             break;
+         }
+     }
+
+     if (headerRowIdx === -1) return;
+
+     const nfIdx = Object.keys(headerMap).find(k => k === 'nf' || k.includes('nota fiscal') || k === 'nº nf' || k.includes('documento')) ? headerMap[Object.keys(headerMap).find(k => k === 'nf' || k.includes('nota fiscal') || k === 'nº nf' || k.includes('documento'))] : -1;
+     const fornIdx = Object.keys(headerMap).find(k => k.includes('fornecedor') || k.includes('razão social') || k.includes('credor')) ? headerMap[Object.keys(headerMap).find(k => k.includes('fornecedor') || k.includes('razão social') || k.includes('credor'))] : -1;
+     const cnpjIdx = Object.keys(headerMap).find(k => k.includes('cnpj')) ? headerMap[Object.keys(headerMap).find(k => k.includes('cnpj'))] : -1;
+
+     const targetIndices = {};
+     for (const [key, propName] of Object.entries(targetHeadersMap)) {
+         const matchedHeader = Object.keys(headerMap).find(k => k === key.toLowerCase() || k.includes(key.toLowerCase()));
+         if (matchedHeader) {
+             targetIndices[propName] = headerMap[matchedHeader];
+         }
+     }
+
+     for (let i = headerRowIdx + 1; i < aoa.length; i++) {
+         const row = aoa[i];
+         const nfVal = nfIdx !== -1 ? row[nfIdx] : '';
+         if (!nfVal) continue;
+
+         const fornVal = fornIdx !== -1 ? row[fornIdx] : '';
+         const cnpjVal = cnpjIdx !== -1 ? row[cnpjIdx] : '';
+
+         const match = findMatch(nfVal, fornVal, cnpjVal);
+         kpi.total++;
+         
+         let acao = 'Pendente de validação';
+         let statusZepp = 'Falta na Base Original';
+
+         if (match) {
+             kpi.pronto++;
+             acao = 'OK: Linha Preenchida com Romaneio';
+             statusZepp = 'Aprovado';
+             for (const [propName, colIdx] of Object.entries(targetIndices)) {
+                 if (propName === 'valorAdiantamento') {
+                     row[colIdx] = match.tipoAdiantamento.includes('FUTURO') ? match.valorAdiantamentoFuturo : match.valorAdiantamentoSinal;
+                 } else if (propName === 'valorDescontado') {
+                     row[colIdx] = match.valorDescontado;
+                 } else if (propName === 'contrato') {
+                     row[colIdx] = match.contrato;
+                 } else if (propName === 'valorLiquido') {
+                     row[colIdx] = match.valorLiquido;
+                 } else if (propName === 'valorRetencao') {
+                     row[colIdx] = match.valorRetencao;
+                 }
+             }
+         } else {
+             kpi.acao++;
+         }
+
+         results.push({
+             id: nfVal,
+             credor: fornVal,
+             vencimento: '-',
+             valor: 0,
+             statusZepp,
+             noRomaneio: sheetName,
+             observacao: 'Aba: ' + sheetName,
+             acao,
+             originalSienge: {}
+         });
+     }
+
+     wb2.Sheets[sheetName] = XLSX.utils.aoa_to_sheet(aoa);
+  };
+
+  if (adiantamentoSheet) {
+      processSheet(adiantamentoSheet, {
+          'Valor de Adiantamento': 'valorAdiantamento',
+          'Valor Descontado': 'valorDescontado',
+          'Contrato/Pedido': 'contrato',
+          'Contrato': 'contrato'
+      });
+  }
+
+  if (fornecedoresSheet) {
+      processSheet(fornecedoresSheet, {
+          'Valor liquido': 'valorLiquido',
+          'Valor líquido': 'valorLiquido'
+      });
+  }
+
+  if (retencaoSheet) {
+      processSheet(retencaoSheet, {
+          'Valor de Retenção': 'valorRetencao',
+          'Retenção': 'valorRetencao',
+          'Contrato': 'contrato',
+          'Contrato/Pedido': 'contrato'
+      });
+  }
+
+  return { results, kpi, finalWorkbook: wb2 };
 };

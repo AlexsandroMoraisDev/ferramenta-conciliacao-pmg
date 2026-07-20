@@ -55,10 +55,10 @@ function App() {
   const handleImport = async (files) => {
     setIsProcessing(true);
     try {
-      const { results, kpi } = await processConciliacao(files, activeTab);
+      const { results, kpi, finalWorkbook } = await processConciliacao(files, activeTab);
       setAppState(prev => ({
         ...prev,
-        [activeTab]: { imported: true, data: results, kpi }
+        [activeTab]: { imported: true, data: results, kpi, finalWorkbook }
       }));
     } catch (error) {
       alert("Erro ao processar planilhas. Verifique os formatos.");
@@ -109,10 +109,11 @@ function App() {
               data={currentTabState.data} 
               kpi={currentTabState.kpi} 
               categoryName={activeTab}
+              finalWorkbook={currentTabState.finalWorkbook}
               onReimport={() => {
                 setAppState(prev => ({
                   ...prev,
-                  [activeTab]: { imported: false, data: [], kpi: null }
+                  [activeTab]: { imported: false, data: [], kpi: null, finalWorkbook: null }
                 }));
               }}
             />

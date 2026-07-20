@@ -5,7 +5,9 @@ export default function ImportModal({ onImport, categoryName, onClose }) {
   const [files, setFiles] = useState({
     romaneio: null,
     sienge: null,
-    zepp: null
+    zepp: null,
+    planilha1: null,
+    planilha2: null
   });
 
   const handleFileChange = (type, e) => {
@@ -19,8 +21,12 @@ export default function ImportModal({ onImport, categoryName, onClose }) {
     onImport(files);
   };
 
-  const allFilesSelected = files.romaneio && files.sienge && files.zepp;
-  const anyFileSelected = files.romaneio || files.sienge || files.zepp;
+  const allFilesSelected = categoryName === 'Conciliação Saldos Contábeis' 
+    ? (files.planilha1 && files.planilha2) 
+    : (files.romaneio && files.sienge && files.zepp);
+  const anyFileSelected = categoryName === 'Conciliação Saldos Contábeis'
+    ? (files.planilha1 || files.planilha2)
+    : (files.romaneio || files.sienge || files.zepp);
 
   return (
     <div className="import-container">
@@ -35,25 +41,44 @@ export default function ImportModal({ onImport, categoryName, onClose }) {
         </div>
         
         <p style={{ color: 'var(--text-muted)', marginBottom: '1.5rem' }}>
-          Para conciliar a aba de {categoryName}, importe as planilhas extraídas dos 3 sistemas.
+          {categoryName === 'Conciliação Saldos Contábeis'
+            ? 'Para esta conciliação, importe a Planilha 1 (Romaneio) e a Planilha 2 (Composição).'
+            : `Para conciliar a aba de ${categoryName}, importe as planilhas extraídas dos 3 sistemas.`}
         </p>
 
         <div className="import-grid">
-          <FileDropZone 
-            title="Sienge" 
-            file={files.sienge} 
-            onChange={(e) => handleFileChange('sienge', e)} 
-          />
-          <FileDropZone 
-            title="Zepp" 
-            file={files.zepp} 
-            onChange={(e) => handleFileChange('zepp', e)} 
-          />
-          <FileDropZone 
-            title="Romaneio" 
-            file={files.romaneio} 
-            onChange={(e) => handleFileChange('romaneio', e)} 
-          />
+          {categoryName === 'Conciliação Saldos Contábeis' ? (
+            <>
+              <FileDropZone 
+                title="Planilha 1 (Romaneio)" 
+                file={files.planilha1} 
+                onChange={(e) => handleFileChange('planilha1', e)} 
+              />
+              <FileDropZone 
+                title="Planilha 2 (Composição)" 
+                file={files.planilha2} 
+                onChange={(e) => handleFileChange('planilha2', e)} 
+              />
+            </>
+          ) : (
+            <>
+              <FileDropZone 
+                title="Sienge" 
+                file={files.sienge} 
+                onChange={(e) => handleFileChange('sienge', e)} 
+              />
+              <FileDropZone 
+                title="Zepp" 
+                file={files.zepp} 
+                onChange={(e) => handleFileChange('zepp', e)} 
+              />
+              <FileDropZone 
+                title="Romaneio" 
+                file={files.romaneio} 
+                onChange={(e) => handleFileChange('romaneio', e)} 
+              />
+            </>
+          )}
         </div>
 
         <div style={{ marginTop: '2rem', display: 'flex', justifyContent: 'flex-end', gap: '1rem' }}>
