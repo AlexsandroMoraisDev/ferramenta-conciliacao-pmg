@@ -249,19 +249,28 @@ const processTitulos = (siengeData, zeppData, romaneioData) => {
     });
   });
 
-  // CORREÇÃO #1: Varredura reversa — encontrar títulos aprovados no Zepp
-  // que não existem no Sienge (ex: título 97588 removido da extração do Sienge)
+  // CORREÇÃO #1: Varredura reversa — encontrar títulos APROVADOS no Zepp
+  // que não existem no Sienge (ex: título 97588 removido da extração do Sienge).
+  // REGRAS ESTRITAS para evitar poluição do resultado:
+  //   1. ID deve ser numérico puro (ex: "97588") — exclui "CLSF/XXX", "PPC/XXX"
+  //   2. Status deve ser Aprovado ou Concluído (exclui Reprovado — esses saíram por motivo)
+  //   3. ID não pode já ter sido processado via Sienge
   const zeppOrphans = new Set();
   zeppData.forEach(row => {
     const titulo = String(row['Código Origem'] || '').split('/')[0].trim();
-    if (!titulo) return;
+    if (!titulo || titulo === 'nan') return;
+
+    // Regra 1: ID deve ser estritamente numérico (título do Sienge é sempre número)
+    if (!/^\d+$/.test(titulo)) return;
+
     if (processedSiengeIds.has(titulo)) return; // já processado via Sienge
     if (zeppOrphans.has(titulo)) return; // já adicionado como órfão
 
     const statusNorm = removeAccents(row['Status'] || '');
-    // Só exibe títulos relevantes do Zepp (aprovados, em andamento, etc.)
-    // Ignora apenas se estiver vazio ou cancelado
-    if (statusNorm.includes('cancelado')) return;
+
+    // Regra 2: Só inclui Aprovado ou Concluído — Reprovados saíram do Sienge por motivo legítimo
+    const isAprovado = statusNorm.includes('aprovado') || statusNorm.includes('concluido');
+    if (!isAprovado) return;
 
     zeppOrphans.add(titulo);
 
