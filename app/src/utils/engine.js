@@ -102,8 +102,45 @@ const filterFallbackMatches = (matches, idSienge) => {
 };
 
 // ---------------------------------------------------------
-// LÓGICA DE TÍTULOS (BLINDADA 100%)
+// LÓGICA DE TÍTULOS — AUDITADA E CORRIGIDA
+// Correções aplicadas:
+//   #1 Varredura reversa do Zepp para títulos ausentes no Sienge
+//   #2 Guard clause com log ao invés de descarte silencioso
+//   #3 Melhor match no Zepp para duplicatas (prioriza Aprovado)
+//   #4 Concatena todos os romaneios quando título está em múltiplos
+//   #5 Normaliza acento em 'concluído' para comparação segura
+//   #6 Data de emissão com fallback no Sienge
 // ---------------------------------------------------------
+
+// Normaliza string removendo acentos para comparações seguras
+const removeAccents = (str) =>
+  String(str || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+
+// Seleciona o melhor match do Zepp quando há duplicatas:
+// Prioridade: Aprovado/Concluido > outros > primeiro disponível
+const getBestZeppMatch = (matches) => {
+  if (!matches || matches.length === 0) return null;
+  if (matches.length === 1) return matches[0];
+  // Prioridade 1: Aprovado ou Concluído
+  const aprovado = matches.find(r => {
+    const s = removeAccents(r['Status'] || '');
+    return s.includes('aprovado') || s.includes('concluido');
+  });
+  if (aprovado) return aprovado;
+  // Prioridade 2: primeiro disponível (evita reprovações antigas no topo)
+  return matches[matches.length - 1];
+};
+
+// Concatena todos os números de romaneio quando há duplicatas
+const getAllRomaneioNums = (matches) => {
+  if (!matches || matches.length === 0) return 'Sem Romaneio';
+  const nums = matches
+    .map(r => r['Nº ROMANEIO'] || r['Nº Romaneio'] || r['Romaneio'] || '')
+    .filter(Boolean);
+  const uniqNums = [...new Set(nums)];
+  return uniqNums.length > 0 ? uniqNums.join(' | ') : 'Encontrado';
+};
+
 const processTitulos = (siengeData, zeppData, romaneioData) => {
   const zeppMapTitulo = {};
   const zeppMapCredorValor = {};
@@ -138,37 +175,56 @@ const processTitulos = (siengeData, zeppData, romaneioData) => {
   const results = [];
   let kpi = { total: 0, pronto: 0, aprovacao: 0, acao: 0 };
 
+  // Conjunto dos IDs processados (para detectar órfãos no Zepp depois)
+  const processedSiengeIds = new Set();
+
   siengeData.forEach(siengeRow => {
-    if (!siengeRow['Título'] && !siengeRow['Credor']) return;
+    // CORREÇÃO #2: Guard clause com registro ao invés de descarte silencioso
+    if (!siengeRow['Título'] && !siengeRow['Credor']) {
+      console.warn('[processTitulos] Linha ignorada por falta de Título e Credor:', siengeRow);
+      return;
+    }
+
     const tituloSienge = String(siengeRow['Título'] || '').trim();
+    if (tituloSienge) processedSiengeIds.add(tituloSienge);
     const cv = buildCredorValorKey(siengeRow);
 
-    const zeppMatches = (tituloSienge && zeppMapTitulo[tituloSienge]) 
-      ? zeppMapTitulo[tituloSienge] 
+    const zeppMatchesAll = (tituloSienge && zeppMapTitulo[tituloSienge])
+      ? zeppMapTitulo[tituloSienge]
       : filterFallbackMatches(zeppMapCredorValor[cv] || [], tituloSienge);
-      
-    const romaneioMatches = (tituloSienge && romaneioMapTitulo[tituloSienge]) 
-      ? romaneioMapTitulo[tituloSienge] 
+
+    const romaneioMatchesAll = (tituloSienge && romaneioMapTitulo[tituloSienge])
+      ? romaneioMapTitulo[tituloSienge]
       : filterFallbackMatches(romaneioMapCredorValor[cv] || [], tituloSienge);
 
-    const inZepp = zeppMatches.length > 0;
-    const inRomaneio = romaneioMatches.length > 0;
+    // CORREÇÃO #3: Usa melhor match no Zepp para duplicatas
+    const bestZepp = getBestZeppMatch(zeppMatchesAll);
+    const inZepp = !!bestZepp;
+    const inRomaneio = romaneioMatchesAll.length > 0;
 
     let acao = '';
-    let statusZepp = inZepp ? (zeppMatches[0]['Status'] || 'Aprovado') : 'Não encontrado';
-    let vencimentoZepp = inZepp ? (zeppMatches[0]['Dt. Vencto'] || zeppMatches[0]['Dt. vencto'] || '') : '';
-    let noRomaneio = inRomaneio ? (romaneioMatches[0]['Nº ROMANEIO'] || romaneioMatches[0]['Nº Romaneio'] || romaneioMatches[0]['Romaneio'] || 'Encontrado') : 'Sem Romaneio';
-    let dataEmissao = inZepp ? (zeppMatches[0]['Emissão'] || zeppMatches[0]['emissão'] || '') : '';
+    let statusZepp = inZepp ? (bestZepp['Status'] || 'Aprovado') : 'Não encontrado';
+    let vencimentoZepp = inZepp ? (bestZepp['Dt. Vencto'] || bestZepp['Dt. vencto'] || '') : '';
+
+    // CORREÇÃO #4: Concatena todos os romaneios quando há duplicatas
+    let noRomaneio = inRomaneio ? getAllRomaneioNums(romaneioMatchesAll) : 'Sem Romaneio';
+
+    // CORREÇÃO #6: Fallback de data de emissão no Sienge quando não encontrado no Zepp
+    let dataEmissao = inZepp
+      ? (bestZepp['Emissão'] || bestZepp['emissão'] || '')
+      : (siengeRow['Data emissão'] || siengeRow['Data de emissão'] || siengeRow['Data Emissão'] || '');
+
     let tipoDocumento = siengeRow['Documento'] || '';
 
-    const zeppStatusLower = statusZepp.toLowerCase();
-    
-    if (inRomaneio && inZepp && (zeppStatusLower.includes('aprovado') || zeppStatusLower.includes('concluído'))) {
+    // CORREÇÃO #5: Normaliza acento em 'concluído' para comparação segura
+    const zeppStatusNorm = removeAccents(statusZepp);
+
+    if (inRomaneio && inZepp && (zeppStatusNorm.includes('aprovado') || zeppStatusNorm.includes('concluido'))) {
       acao = 'OK: Lançado no Romaneio e Enviado'; kpi.pronto++;
     } else if (inRomaneio && inZepp) {
       acao = 'ALERTA: Em Aprovação no Zepp'; kpi.aprovacao++;
     } else if (inZepp && !inRomaneio) {
-      acao = 'ALERTA: Falta Romaneio'; zeppStatusLower.includes('aprov') ? kpi.acao++ : kpi.aprovacao++;
+      acao = 'ALERTA: Falta Romaneio'; zeppStatusNorm.includes('aprov') ? kpi.acao++ : kpi.aprovacao++;
     } else if (inRomaneio && !inZepp) {
       acao = 'ALERTA: Falta Zepp'; kpi.acao++;
     } else {
@@ -188,8 +244,63 @@ const processTitulos = (siengeData, zeppData, romaneioData) => {
       noRomaneio,
       observacao: siengeRow['Observação'] || '-',
       acao,
-      originalZepp: inZepp ? zeppMatches[0] : null,
+      originalZepp: inZepp ? bestZepp : null,
       originalSienge: siengeRow
+    });
+  });
+
+  // CORREÇÃO #1: Varredura reversa — encontrar títulos aprovados no Zepp
+  // que não existem no Sienge (ex: título 97588 removido da extração do Sienge)
+  const zeppOrphans = new Set();
+  zeppData.forEach(row => {
+    const titulo = String(row['Código Origem'] || '').split('/')[0].trim();
+    if (!titulo) return;
+    if (processedSiengeIds.has(titulo)) return; // já processado via Sienge
+    if (zeppOrphans.has(titulo)) return; // já adicionado como órfão
+
+    const statusNorm = removeAccents(row['Status'] || '');
+    // Só exibe títulos relevantes do Zepp (aprovados, em andamento, etc.)
+    // Ignora apenas se estiver vazio ou cancelado
+    if (statusNorm.includes('cancelado')) return;
+
+    zeppOrphans.add(titulo);
+
+    const romaneioMatchesAll = romaneioMapTitulo[titulo] || [];
+    const inRomaneio = romaneioMatchesAll.length > 0;
+    const noRomaneio = inRomaneio ? getAllRomaneioNums(romaneioMatchesAll) : 'Sem Romaneio';
+    const statusZepp = row['Status'] || 'Aprovado';
+    const zeppStatusNorm = removeAccents(statusZepp);
+
+    let acao = '';
+    if (inRomaneio && (zeppStatusNorm.includes('aprovado') || zeppStatusNorm.includes('concluido'))) {
+      acao = 'OK: Lançado no Romaneio e Enviado';
+      kpi.pronto++;
+    } else if (inRomaneio) {
+      acao = 'ALERTA: Em Aprovação no Zepp';
+      kpi.aprovacao++;
+    } else if (zeppStatusNorm.includes('aprovado') || zeppStatusNorm.includes('concluido')) {
+      acao = 'ALERTA: Aprovado no Zepp — Não encontrado no Sienge';
+      kpi.acao++;
+    } else {
+      acao = 'ALERTA: No Zepp — Não encontrado no Sienge';
+      kpi.acao++;
+    }
+
+    kpi.total++;
+    results.push({
+      id: titulo,
+      tipoDocumento: '-',
+      credor: row['Credor'] || '-',
+      dataEmissao: row['Emissão'] || row['emissão'] || '-',
+      vencimento: row['Dt. Vencto'] || row['Dt. vencto'] || '-',
+      numeroNF: '-',
+      valor: getValor(row),
+      statusZepp,
+      noRomaneio,
+      observacao: '⚠️ Título não encontrado na extração do Sienge',
+      acao,
+      originalZepp: row,
+      originalSienge: null
     });
   });
 
