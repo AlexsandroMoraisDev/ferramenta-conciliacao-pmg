@@ -436,14 +436,23 @@ const extractPedidoNum = (p) => {
 const formatApropriacao = (a) => {
   if (!a) return '-';
   const str = String(a).trim();
-  if (str.includes('.')) return str;
-  const hasS = str.toUpperCase().endsWith('S');
-  const digits = str.replace(/\D/g, '');
+  if (str === '' || str === '-' || str === 'null' || str === 'undefined') return '-';
+  
+  const cleanStr = str.replace(/\s+/g, '').toUpperCase();
+  const maskedMatch = cleanStr.match(/^(\d)\.(\d{3})\.(\d{3})\.(\d{3})([A-Z])?$/);
+  if (maskedMatch) {
+    const suffix = maskedMatch[5] ? maskedMatch[5] : '';
+    return `${maskedMatch[1]}.${maskedMatch[2]}.${maskedMatch[3]}.${maskedMatch[4]}${suffix}`;
+  }
+
+  const hasS = cleanStr.endsWith('S');
+  const digits = cleanStr.replace(/\D/g, '');
   if (digits.length === 10) {
     const formatted = digits.slice(0, 1) + '.' + digits.slice(1, 4) + '.' + digits.slice(4, 7) + '.' + digits.slice(7, 10);
     return hasS ? formatted + 'S' : formatted;
   }
-  return str;
+
+  return '-';
 };
 
 const formatMes = (dateStr, defaultMes = '') => {
@@ -484,13 +493,13 @@ export const processPedidos = (siengeData, zeppData, romaneioData) => {
   const controleList = cleanControle.map((c, idx) => ({
     idx,
     row: c,
-    pedidoNum: extractPedidoNum(c['PEDIDO']),
-    mes: c['MÊS'] || '',
-    credor: c['CREDOR'] || '',
-    apropriacao: formatApropriacao(c['APROPRIAÇÃO']),
-    valor: normalizeNum(c['VALOR']),
-    vinculoFD: c['VÍNCULO DE FATURAMENTO DIRETO'] || '-',
-    cnpj: c['CNPJ'] || c['CNPJ/CPF'] || '-'
+    pedidoNum: extractPedidoNum(c['PEDIDO'] || c['Pedido'] || c['N. do Pedido']),
+    mes: c['MÊS'] || c['MES'] || c['Mês'] || c['Mes'] || '',
+    credor: c['CREDOR'] || c['Credor'] || c['FORNECEDOR'] || c['Fornecedor'] || '',
+    apropriacao: formatApropriacao(c['APROPRIAÇÃO'] || c['APROPRIACAO'] || c['Apropriação'] || c['CENTRO DE CUSTO'] || c['Centro de Custo']),
+    valor: normalizeNum(c['VALOR'] || c['Valor'] || c[' VALOR ']),
+    vinculoFD: c['VÍNCULO DE FATURAMENTO DIRETO'] || c['VINCULO DE FATURAMENTO DIRETO'] || c['Vínculo de Faturamento Direto'] || c['VINCULO'] || c['Vínculo'] || '-',
+    cnpj: c['CNPJ'] || c['CNPJ/CPF'] || c['CPF/CNPJ'] || '-'
   }));
 
   const matchedControleIndexes = new Set();

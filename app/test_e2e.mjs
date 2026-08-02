@@ -148,6 +148,18 @@ async function runE2ETests() {
     // Verificar Vínculos de Faturamento Direto
     const withFD = pedResult.results.filter(r => r.vinculoFaturamentoDireto && r.vinculoFaturamentoDireto !== '-');
     assert(withFD.length > 0, `${withFD.length} pedidos com Vínculo de Faturamento Direto mapeado`);
+
+    // Validação estrita da coluna Apropriação (Padrão contábil mascarado 1.123.456.678 / 1.123.456.678S ou '-')
+    const validApropriacaoPattern = /^(\d\.\d{3}\.\d{3}\.\d{3}[A-Z]?|-)$/;
+    const allValidApropriacao = pedResult.results.every(r => validApropriacaoPattern.test(r.apropriacao));
+    assert(allValidApropriacao, "100% das Apropriações seguem estritamente o padrão contábil mascarado (1.123.456.678 / 1.123.456.678S) ou '-'");
+
+    const hasRawObraCode = pedResult.results.some(r => r.apropriacao === '152' || r.apropriacao === '165' || r.apropriacao === '181');
+    assert(!hasRawObraCode, "Nenhum registro possui código de obra bruto (ex: 152/165) no campo Apropriação");
+
+    const matchedWithApropriacao = pedResult.results.filter(r => r.noRomaneio === 'Encontrado no Controle');
+    const allMatchedHaveApropriacao = matchedWithApropriacao.every(r => r.apropriacao.includes('.'));
+    assert(allMatchedHaveApropriacao, `${matchedWithApropriacao.length} pedidos do Controle possuem Centro de Custo mascarado com sucesso`);
   } else {
     console.warn("Arquivos de pedidos ausentes.");
   }
