@@ -45,7 +45,7 @@ export default function Dashboard({ data, kpi, onReimport, categoryName, finalWo
   const isFaltaRomaneioItem = (item) => {
     if (!item.acao) return false;
     const isAprovadoZepp = String(item.statusZepp || '').toLowerCase().includes('aprovado');
-    const isFaltaRomaneio = item.acao.includes('Falta Romaneio') || item.acao.includes('Falta na Base') || item.acao.includes('Falta Base') || item.acao.includes('Falta Lançar');
+    const isFaltaRomaneio = item.acao.includes('Falta Romaneio') || item.acao.includes('Falta na Base') || item.acao.includes('Falta Base') || item.acao.includes('Falta Lançar') || item.acao.includes('Aguardando Lançamento');
     
     // Normalizando a observação para evitar erros de acentuação
     const obsLower = String(item.observacao || '').toLowerCase();
@@ -71,7 +71,7 @@ export default function Dashboard({ data, kpi, onReimport, categoryName, finalWo
     
     const matchesStatus = statusFilter === 'Todos os Status' || 
                           (statusFilter === 'OK' && item.acao && item.acao.startsWith('OK')) ||
-                          (statusFilter === 'Alerta' && item.acao && item.acao.startsWith('ALERTA')) ||
+                          (statusFilter === 'Alerta' && item.acao && (item.acao.startsWith('ALERTA') || item.acao.includes('Aguardando'))) ||
                           (statusFilter === 'Falta Romaneio' && isFaltaRomaneioItem(item));
 
     if (categoryName === 'Medições') {
@@ -117,7 +117,9 @@ export default function Dashboard({ data, kpi, onReimport, categoryName, finalWo
   const getBadgeClass = (acao) => {
     if (!acao) return 'badge-warning';
     if (acao.startsWith('OK')) return 'badge-success';
+    if (acao.includes('Aguardando Lançamento') || acao.includes('Em Aprovação')) return 'badge-warning';
     if (acao.includes('Falta Romaneio') && acao.includes('Falta Zepp')) return 'badge-danger';
+    if (acao.includes('Reprovado') || acao.includes('Falta no Boletim')) return 'badge-danger';
     return 'badge-warning';
   };
 
