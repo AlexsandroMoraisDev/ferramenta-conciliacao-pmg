@@ -21,7 +21,21 @@ export default function Dashboard({ data, kpi, onReimport, categoryName, finalWo
     acao: '',
     tipoDocumento: '',
     dataEmissao: '',
-    numeroNF: ''
+    numeroNF: '',
+    valorAdiantamento: '',
+    valorDescontado: '',
+    valorRetencao: '',
+    // Medições
+    medicao: '',
+    idContrato: '',
+    valorContrato: '',
+    valorTotal: '',
+    imposto: '',
+    retencao: '',
+    descontoSinal: '',
+    descontosFD: '',
+    outrosDescontos: '',
+    valorLiquido: ''
   });
 
   const handleColumnFilterChange = (col, value) => {
@@ -31,7 +45,7 @@ export default function Dashboard({ data, kpi, onReimport, categoryName, finalWo
   const isFaltaRomaneioItem = (item) => {
     if (!item.acao) return false;
     const isAprovadoZepp = String(item.statusZepp || '').toLowerCase().includes('aprovado');
-    const isFaltaRomaneio = item.acao.includes('Falta Romaneio') || item.acao.includes('Falta na Base') || item.acao.includes('Falta Base');
+    const isFaltaRomaneio = item.acao.includes('Falta Romaneio') || item.acao.includes('Falta na Base') || item.acao.includes('Falta Base') || item.acao.includes('Falta Lançar');
     
     // Normalizando a observação para evitar erros de acentuação
     const obsLower = String(item.observacao || '').toLowerCase();
@@ -50,14 +64,34 @@ export default function Dashboard({ data, kpi, onReimport, categoryName, finalWo
 
   // Filtragem local
   const filteredData = data.filter(item => {
-    const matchesSearch = item.credor.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                          item.noRomaneio.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          String(item.id || '').toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesSearch = String(item.credor || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
+                          String(item.noRomaneio || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+                          String(item.id || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+                          String(item.idContrato || '').toLowerCase().includes(searchTerm.toLowerCase());
     
     const matchesStatus = statusFilter === 'Todos os Status' || 
                           (statusFilter === 'OK' && item.acao && item.acao.startsWith('OK')) ||
                           (statusFilter === 'Alerta' && item.acao && item.acao.startsWith('ALERTA')) ||
                           (statusFilter === 'Falta Romaneio' && isFaltaRomaneioItem(item));
+
+    if (categoryName === 'Medições') {
+      const matchesMedicao = !columnFilters.medicao || String(item.medicao || '').toLowerCase().includes(columnFilters.medicao.toLowerCase());
+      const matchesCnpj = !columnFilters.cnpj || String(item.cnpj || '').toLowerCase().includes(columnFilters.cnpj.toLowerCase());
+      const matchesCredor = !columnFilters.credor || String(item.credor || '').toLowerCase().includes(columnFilters.credor.toLowerCase());
+      const matchesIdContrato = !columnFilters.idContrato || String(item.idContrato || '').toLowerCase().includes(columnFilters.idContrato.toLowerCase());
+      const matchesValorContrato = !columnFilters.valorContrato || formatCurrency(item.valorContrato).toLowerCase().includes(columnFilters.valorContrato.toLowerCase());
+      const matchesValorTotal = !columnFilters.valorTotal || formatCurrency(item.valorTotal).toLowerCase().includes(columnFilters.valorTotal.toLowerCase());
+      const matchesImposto = !columnFilters.imposto || formatCurrency(item.imposto).toLowerCase().includes(columnFilters.imposto.toLowerCase());
+      const matchesRetencao = !columnFilters.retencao || formatCurrency(item.retencao).toLowerCase().includes(columnFilters.retencao.toLowerCase());
+      const matchesDescontoSinal = !columnFilters.descontoSinal || formatCurrency(item.descontoSinal).toLowerCase().includes(columnFilters.descontoSinal.toLowerCase());
+      const matchesDescontosFD = !columnFilters.descontosFD || formatCurrency(item.descontosFD).toLowerCase().includes(columnFilters.descontosFD.toLowerCase());
+      const matchesOutrosDescontos = !columnFilters.outrosDescontos || formatCurrency(item.outrosDescontos).toLowerCase().includes(columnFilters.outrosDescontos.toLowerCase());
+      const matchesValorLiquido = !columnFilters.valorLiquido || formatCurrency(item.valorLiquido).toLowerCase().includes(columnFilters.valorLiquido.toLowerCase());
+      const matchesStatusZepp = !columnFilters.statusZepp || String(item.statusZepp || '').toLowerCase().includes(columnFilters.statusZepp.toLowerCase());
+      const matchesAcao = !columnFilters.acao || String(item.acao || '').toLowerCase().includes(columnFilters.acao.toLowerCase());
+
+      return matchesSearch && matchesStatus && matchesMedicao && matchesCnpj && matchesCredor && matchesIdContrato && matchesValorContrato && matchesValorTotal && matchesImposto && matchesRetencao && matchesDescontoSinal && matchesDescontosFD && matchesOutrosDescontos && matchesValorLiquido && matchesStatusZepp && matchesAcao;
+    }
 
     const matchesId = String(item.id || '').toLowerCase().includes(columnFilters.id.toLowerCase());
     const matchesCredor = String(item.credor || '').toLowerCase().includes(columnFilters.credor.toLowerCase());
@@ -73,8 +107,11 @@ export default function Dashboard({ data, kpi, onReimport, categoryName, finalWo
     const matchesTipoDocumento = String(item.tipoDocumento || '').toLowerCase().includes((columnFilters.tipoDocumento || '').toLowerCase());
     const matchesDataEmissao = String(item.dataEmissao || '').toLowerCase().includes((columnFilters.dataEmissao || '').toLowerCase());
     const matchesNumeroNF = String(item.numeroNF || '').toLowerCase().includes((columnFilters.numeroNF || '').toLowerCase());
+    const matchesValorAdiantamento = !columnFilters.valorAdiantamento || formatCurrency(item.valorAdiantamento).toLowerCase().includes(columnFilters.valorAdiantamento.toLowerCase());
+    const matchesValorDescontado = !columnFilters.valorDescontado || formatCurrency(item.valorDescontado).toLowerCase().includes(columnFilters.valorDescontado.toLowerCase());
+    const matchesValorRetencao = !columnFilters.valorRetencao || formatCurrency(item.valorRetencao).toLowerCase().includes(columnFilters.valorRetencao.toLowerCase());
                           
-    return matchesSearch && matchesStatus && matchesId && matchesCredor && matchesCnpj && matchesApropriacao && matchesVencimento && matchesValor && matchesVinculo && matchesStatusZepp && matchesNoRomaneio && matchesObservacao && matchesAcao && matchesTipoDocumento && matchesDataEmissao && matchesNumeroNF;
+    return matchesSearch && matchesStatus && matchesId && matchesCredor && matchesCnpj && matchesApropriacao && matchesVencimento && matchesValor && matchesVinculo && matchesStatusZepp && matchesNoRomaneio && matchesObservacao && matchesAcao && matchesTipoDocumento && matchesDataEmissao && matchesNumeroNF && matchesValorAdiantamento && matchesValorDescontado && matchesValorRetencao;
   });
 
   const getBadgeClass = (acao) => {
@@ -97,6 +134,24 @@ export default function Dashboard({ data, kpi, onReimport, categoryName, finalWo
       return;
     }
     const ws = XLSX.utils.json_to_sheet(filteredData.map(d => {
+      if (categoryName === 'Medições') {
+        return {
+          'MEDIÇÃO': d.medicao,
+          'CNPJ': d.cnpj,
+          'RAZÃO SOCIAL': d.credor,
+          'ID CONTRATO': d.idContrato,
+          'VALOR DO CONTRATO': d.valorContrato,
+          'VALOR TOTAL': d.valorTotal,
+          'IMPOSTO': d.imposto,
+          'RETENÇÃO': d.retencao,
+          'DESCONTO DE SINAL': d.descontoSinal,
+          'DESCONTOS FD': d.descontosFD,
+          'OUTROS DESCONTOS': d.outrosDescontos,
+          'VALOR LÍQUIDO': d.valorLiquido,
+          'STATUS ZEPP': d.statusZepp,
+          'AÇÃO REQUERIDA': d.acao
+        };
+      }
       if (categoryName === 'Pedidos') {
         return {
           'PEDIDO': d.id,
@@ -135,6 +190,24 @@ export default function Dashboard({ data, kpi, onReimport, categoryName, finalWo
       return;
     }
     const ws = XLSX.utils.json_to_sheet(faltaRomaneioData.map(d => {
+      if (categoryName === 'Medições') {
+        return {
+          'MEDIÇÃO': d.medicao,
+          'CNPJ': d.cnpj,
+          'RAZÃO SOCIAL': d.credor,
+          'ID CONTRATO': d.idContrato,
+          'VALOR DO CONTRATO': d.valorContrato,
+          'VALOR TOTAL': d.valorTotal,
+          'IMPOSTO': d.imposto,
+          'RETENÇÃO': d.retencao,
+          'DESCONTO DE SINAL': d.descontoSinal,
+          'DESCONTOS FD': d.descontosFD,
+          'OUTROS DESCONTOS': d.outrosDescontos,
+          'VALOR LÍQUIDO': d.valorLiquido,
+          'STATUS ZEPP': d.statusZepp,
+          'AÇÃO REQUERIDA': d.acao
+        };
+      }
       if (categoryName === 'Pedidos') {
         return {
           'PEDIDO': d.id,
@@ -171,19 +244,23 @@ export default function Dashboard({ data, kpi, onReimport, categoryName, finalWo
     const doc = new jsPDF('landscape');
     doc.text(`Resultados da Conciliação - ${categoryName}`, 14, 15);
     
-    const tableColumn = categoryName === 'Pedidos' 
-      ? ["Pedido", "Credor", "CNPJ", "Apropriação", "Valor", "Vínc. Faturamento", "Status Zepp", "Observação", "Ação"]
-      : categoryName === 'Títulos'
-        ? [getIDHeaderName(), "Tipo de Documento", "Credor", "Data de Emissão", "Vencimento", "Nº da NF", "Valor", "Status Zepp", "Romaneio", "Ação"]
-        : [getIDHeaderName(), "Credor", "Vencimento", "Valor", "Status Zepp", "Romaneio", "Ação"];
+    const tableColumn = categoryName === 'Medições'
+      ? ["Medição", "CNPJ", "Razão Social", "ID Contrato", "Valor Contrato", "Total", "Imposto", "Retenção", "Sinal", "Desc. FD", "Líquido", "Status Zepp", "Ação"]
+      : categoryName === 'Pedidos' 
+        ? ["Pedido", "Credor", "CNPJ", "Apropriação", "Valor", "Vínc. Faturamento", "Status Zepp", "Observação", "Ação"]
+        : categoryName === 'Títulos'
+          ? [getIDHeaderName(), "Tipo de Documento", "Credor", "Data de Emissão", "Vencimento", "Nº da NF", "Valor", "Status Zepp", "Romaneio", "Ação"]
+          : [getIDHeaderName(), "Credor", "Vencimento", "Valor", "Status Zepp", "Romaneio", "Ação"];
     const tableRows = [];
 
     filteredData.forEach(item => {
-      const rowData = categoryName === 'Pedidos'
-        ? [item.id, item.credor, item.cnpj, item.apropriacao, formatCurrency(item.valor), item.vinculoFaturamentoDireto, item.statusZepp, item.observacao, item.acao]
-        : categoryName === 'Títulos'
-          ? [item.id, item.tipoDocumento, item.credor, item.dataEmissao, item.vencimento, item.numeroNF, formatCurrency(item.valor), item.statusZepp, item.noRomaneio, item.acao]
-          : [item.id, item.credor, item.vencimento, formatCurrency(item.valor), item.statusZepp, item.noRomaneio, item.acao];
+      const rowData = categoryName === 'Medições'
+        ? [item.medicao, item.cnpj, item.credor, item.idContrato, formatCurrency(item.valorContrato), formatCurrency(item.valorTotal), formatCurrency(item.imposto), formatCurrency(item.retencao), formatCurrency(item.descontoSinal), formatCurrency(item.descontosFD), formatCurrency(item.valorLiquido), item.statusZepp, item.acao]
+        : categoryName === 'Pedidos'
+          ? [item.id, item.credor, item.cnpj, item.apropriacao, formatCurrency(item.valor), item.vinculoFaturamentoDireto, item.statusZepp, item.observacao, item.acao]
+          : categoryName === 'Títulos'
+            ? [item.id, item.tipoDocumento, item.credor, item.dataEmissao, item.vencimento, item.numeroNF, formatCurrency(item.valor), item.statusZepp, item.noRomaneio, item.acao]
+            : [item.id, item.credor, item.vencimento, formatCurrency(item.valor), item.statusZepp, item.noRomaneio, item.acao];
       tableRows.push(rowData);
     });
 
@@ -191,7 +268,7 @@ export default function Dashboard({ data, kpi, onReimport, categoryName, finalWo
       head: [tableColumn],
       body: tableRows,
       startY: 20,
-      styles: { fontSize: 8 }
+      styles: { fontSize: 7 }
     });
     
     doc.save(`Conciliacao_${categoryName}.pdf`);
@@ -206,35 +283,70 @@ export default function Dashboard({ data, kpi, onReimport, categoryName, finalWo
         </button>
       </div>
 
-      <div className="kpi-grid">
-        <div className="kpi-card">
-          <h3>Total de Notas</h3>
-          <div className="value">{kpi.total}</div>
-        </div>
-        <div className="kpi-card" style={{ borderBottom: '4px solid var(--success-color)' }}>
-          <h3 style={{ color: 'var(--success-color)' }}>Pronto/Enviado (OK)</h3>
-          <div className="value" style={{ color: 'var(--success-color)' }}>{kpi.pronto}</div>
-        </div>
-        <div className="kpi-card" style={{ borderBottom: '4px solid var(--warning-color)' }}>
-          <h3 style={{ color: 'var(--warning-color)' }}>Em Aprovação (Zepp)</h3>
-          <div className="value" style={{ color: 'var(--warning-color)' }}>{kpi.aprovacao}</div>
-        </div>
-        <div className="kpi-card" style={{ borderBottom: '4px solid var(--danger-color)' }}>
-          <h3 style={{ color: 'var(--danger-color)' }}>Ação Necessária</h3>
-          <div className="value" style={{ color: 'var(--danger-color)' }}>{kpi.acao}</div>
-        </div>
-        {categoryName !== 'Conciliação Saldos Contábeis' && (
-          <div 
-            className="kpi-card clickable" 
-            style={{ borderBottom: '4px solid #8b5cf6' }}
-            onClick={exportFaltaRomaneio}
-            title="Clique para baixar a planilha apenas com itens faltando no Romaneio"
-          >
-            <h3 style={{ color: '#8b5cf6' }}>Falta Romaneio (Baixar)</h3>
-            <div className="value" style={{ color: '#8b5cf6' }}>{faltaRomaneioCount}</div>
+      {categoryName === 'Medições' ? (
+        <div className="kpi-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))' }}>
+          <div className="kpi-card" style={{ borderBottom: '4px solid var(--primary-color)' }}>
+            <h3 style={{ color: 'var(--primary-color)' }}>Valor Total Medido</h3>
+            <div className="value" style={{ color: 'var(--primary-color)', fontSize: '1.4rem' }}>
+              {formatCurrency(kpi.valorTotalMedido || 0)}
+            </div>
           </div>
-        )}
-      </div>
+          <div className="kpi-card" style={{ borderBottom: '4px solid var(--success-color)' }}>
+            <h3 style={{ color: 'var(--success-color)' }}>Aprovado</h3>
+            <div className="value" style={{ color: 'var(--success-color)', fontSize: '1.4rem' }}>
+              {formatCurrency(kpi.valorAprovado || 0)}
+            </div>
+          </div>
+          <div className="kpi-card" style={{ borderBottom: '4px solid var(--warning-color)' }}>
+            <h3 style={{ color: 'var(--warning-color)' }}>Em Aprovação</h3>
+            <div className="value" style={{ color: 'var(--warning-color)', fontSize: '1.4rem' }}>
+              {formatCurrency(kpi.valorEmAprovacao || 0)}
+            </div>
+          </div>
+          <div className="kpi-card" style={{ borderBottom: '4px solid #3b82f6' }}>
+            <h3 style={{ color: '#3b82f6' }}>Lançado</h3>
+            <div className="value" style={{ color: '#3b82f6', fontSize: '1.4rem' }}>
+              {formatCurrency(kpi.valorLancado || 0)}
+            </div>
+          </div>
+          <div className="kpi-card" style={{ borderBottom: '4px solid var(--danger-color)' }}>
+            <h3 style={{ color: 'var(--danger-color)' }}>Falta Lançar</h3>
+            <div className="value" style={{ color: 'var(--danger-color)', fontSize: '1.4rem' }}>
+              {formatCurrency(kpi.valorFaltaLancar || 0)}
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="kpi-grid">
+          <div className="kpi-card">
+            <h3>Total de Notas</h3>
+            <div className="value">{kpi.total}</div>
+          </div>
+          <div className="kpi-card" style={{ borderBottom: '4px solid var(--success-color)' }}>
+            <h3 style={{ color: 'var(--success-color)' }}>Pronto/Enviado (OK)</h3>
+            <div className="value" style={{ color: 'var(--success-color)' }}>{kpi.pronto}</div>
+          </div>
+          <div className="kpi-card" style={{ borderBottom: '4px solid var(--warning-color)' }}>
+            <h3 style={{ color: 'var(--warning-color)' }}>Em Aprovação (Zepp)</h3>
+            <div className="value" style={{ color: 'var(--warning-color)' }}>{kpi.aprovacao}</div>
+          </div>
+          <div className="kpi-card" style={{ borderBottom: '4px solid var(--danger-color)' }}>
+            <h3 style={{ color: 'var(--danger-color)' }}>Ação Necessária</h3>
+            <div className="value" style={{ color: 'var(--danger-color)' }}>{kpi.acao}</div>
+          </div>
+          {categoryName !== 'Conciliação Saldos Contábeis' && (
+            <div 
+              className="kpi-card clickable" 
+              style={{ borderBottom: '4px solid #8b5cf6' }}
+              onClick={exportFaltaRomaneio}
+              title="Clique para baixar a planilha apenas com itens faltando no Romaneio"
+            >
+              <h3 style={{ color: '#8b5cf6' }}>Falta Romaneio (Baixar)</h3>
+              <div className="value" style={{ color: '#8b5cf6' }}>{faltaRomaneioCount}</div>
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="table-container">
         <div className="table-toolbar">
@@ -315,6 +427,65 @@ export default function Dashboard({ data, kpi, onReimport, categoryName, finalWo
                   </th>
                   <th>
                     <div>Ação Requerida</div>
+                    <input type="text" placeholder="Filtrar..." value={columnFilters.acao} onChange={(e) => handleColumnFilterChange('acao', e.target.value)} className="col-filter" />
+                  </th>
+                </tr>
+              ) : categoryName === 'Medições' ? (
+                <tr>
+                  <th>
+                    <div>MEDIÇÃO</div>
+                    <input type="text" placeholder="Filtrar..." value={columnFilters.medicao} onChange={(e) => handleColumnFilterChange('medicao', e.target.value)} className="col-filter" />
+                  </th>
+                  <th>
+                    <div>CNPJ</div>
+                    <input type="text" placeholder="Filtrar..." value={columnFilters.cnpj} onChange={(e) => handleColumnFilterChange('cnpj', e.target.value)} className="col-filter" />
+                  </th>
+                  <th>
+                    <div>RAZÃO SOCIAL</div>
+                    <input type="text" placeholder="Filtrar..." value={columnFilters.credor} onChange={(e) => handleColumnFilterChange('credor', e.target.value)} className="col-filter" />
+                  </th>
+                  <th>
+                    <div>ID CONTRATO</div>
+                    <input type="text" placeholder="Filtrar..." value={columnFilters.idContrato} onChange={(e) => handleColumnFilterChange('idContrato', e.target.value)} className="col-filter" />
+                  </th>
+                  <th>
+                    <div>VALOR DO CONTRATO</div>
+                    <input type="text" placeholder="Filtrar..." value={columnFilters.valorContrato} onChange={(e) => handleColumnFilterChange('valorContrato', e.target.value)} className="col-filter" />
+                  </th>
+                  <th>
+                    <div>VALOR TOTAL</div>
+                    <input type="text" placeholder="Filtrar..." value={columnFilters.valorTotal} onChange={(e) => handleColumnFilterChange('valorTotal', e.target.value)} className="col-filter" />
+                  </th>
+                  <th>
+                    <div>IMPOSTO</div>
+                    <input type="text" placeholder="Filtrar..." value={columnFilters.imposto} onChange={(e) => handleColumnFilterChange('imposto', e.target.value)} className="col-filter" />
+                  </th>
+                  <th>
+                    <div>RETENÇÃO</div>
+                    <input type="text" placeholder="Filtrar..." value={columnFilters.retencao} onChange={(e) => handleColumnFilterChange('retencao', e.target.value)} className="col-filter" />
+                  </th>
+                  <th>
+                    <div>DESCONTO DE SINAL</div>
+                    <input type="text" placeholder="Filtrar..." value={columnFilters.descontoSinal} onChange={(e) => handleColumnFilterChange('descontoSinal', e.target.value)} className="col-filter" />
+                  </th>
+                  <th>
+                    <div>DESCONTOS FD</div>
+                    <input type="text" placeholder="Filtrar..." value={columnFilters.descontosFD} onChange={(e) => handleColumnFilterChange('descontosFD', e.target.value)} className="col-filter" />
+                  </th>
+                  <th>
+                    <div>OUTROS DESCONTOS</div>
+                    <input type="text" placeholder="Filtrar..." value={columnFilters.outrosDescontos} onChange={(e) => handleColumnFilterChange('outrosDescontos', e.target.value)} className="col-filter" />
+                  </th>
+                  <th>
+                    <div>VALOR LÍQUIDO</div>
+                    <input type="text" placeholder="Filtrar..." value={columnFilters.valorLiquido} onChange={(e) => handleColumnFilterChange('valorLiquido', e.target.value)} className="col-filter" />
+                  </th>
+                  <th>
+                    <div>STATUS ZEPP</div>
+                    <input type="text" placeholder="Filtrar..." value={columnFilters.statusZepp} onChange={(e) => handleColumnFilterChange('statusZepp', e.target.value)} className="col-filter" />
+                  </th>
+                  <th>
+                    <div>AÇÃO REQUERIDA</div>
                     <input type="text" placeholder="Filtrar..." value={columnFilters.acao} onChange={(e) => handleColumnFilterChange('acao', e.target.value)} className="col-filter" />
                   </th>
                 </tr>
@@ -415,7 +586,7 @@ export default function Dashboard({ data, kpi, onReimport, categoryName, finalWo
             <tbody>
               {filteredData.length === 0 ? (
                 <tr>
-                  <td colSpan="8" style={{ textAlign: 'center', padding: '2rem' }}>
+                  <td colSpan="14" style={{ textAlign: 'center', padding: '2rem' }}>
                     Nenhum resultado encontrado.
                   </td>
                 </tr>
@@ -432,6 +603,27 @@ export default function Dashboard({ data, kpi, onReimport, categoryName, finalWo
                         <td style={{ fontWeight: 600 }}>{formatCurrency(item.valorDescontado)}</td>
                         <td style={{ fontWeight: 600 }}>{formatCurrency(item.valor)}</td>
                         <td style={{ fontWeight: 600 }}>{formatCurrency(item.valorRetencao)}</td>
+                        <td>{item.statusZepp}</td>
+                        <td>
+                          <span className={`badge ${getBadgeClass(item.acao)}`}>
+                            {item.acao}
+                          </span>
+                        </td>
+                      </>
+                    ) : categoryName === 'Medições' ? (
+                      <>
+                        <td>{item.medicao}</td>
+                        <td>{item.cnpj}</td>
+                        <td style={{ fontWeight: 500 }}>{item.credor}</td>
+                        <td>{item.idContrato}</td>
+                        <td style={{ fontWeight: 600 }}>{formatCurrency(item.valorContrato)}</td>
+                        <td style={{ fontWeight: 600 }}>{formatCurrency(item.valorTotal)}</td>
+                        <td style={{ fontWeight: 600 }}>{formatCurrency(item.imposto)}</td>
+                        <td style={{ fontWeight: 600 }}>{formatCurrency(item.retencao)}</td>
+                        <td style={{ fontWeight: 600 }}>{formatCurrency(item.descontoSinal)}</td>
+                        <td style={{ fontWeight: 600 }}>{formatCurrency(item.descontosFD)}</td>
+                        <td style={{ fontWeight: 600 }}>{formatCurrency(item.outrosDescontos)}</td>
+                        <td style={{ fontWeight: 600 }}>{formatCurrency(item.valorLiquido)}</td>
                         <td>{item.statusZepp}</td>
                         <td>
                           <span className={`badge ${getBadgeClass(item.acao)}`}>

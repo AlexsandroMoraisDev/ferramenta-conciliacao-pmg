@@ -60,6 +60,24 @@ export default function ImportModal({ onImport, categoryName, onClose }) {
                 onChange={(e) => handleFileChange('planilha2', e)} 
               />
             </>
+          ) : categoryName === 'Medições' ? (
+            <>
+              <FileDropZone 
+                title="Sienge (SIENGE_EDIÇÕES)" 
+                file={files.sienge} 
+                onChange={(e) => handleFileChange('sienge', e)} 
+              />
+              <FileDropZone 
+                title="Zepp (ZEPP_MEDIÇÕES)" 
+                file={files.zepp} 
+                onChange={(e) => handleFileChange('zepp', e)} 
+              />
+              <FileDropZone 
+                title="Controle de Medições" 
+                file={files.romaneio} 
+                onChange={(e) => handleFileChange('romaneio', e)} 
+              />
+            </>
           ) : (
             <>
               <FileDropZone 

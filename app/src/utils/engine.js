@@ -38,6 +38,25 @@ export const readExcelFileLetterHeaders = (file) => {
   });
 };
 
+export const readExcelFileRawRows = (file) => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const data = new Uint8Array(e.target.result);
+        const workbook = XLSX.read(data, { type: 'array' });
+        const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+        const json = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '', raw: true });
+        resolve(json);
+      } catch (err) {
+        reject(err);
+      }
+    };
+    reader.onerror = (err) => reject(err);
+    reader.readAsArrayBuffer(file);
+  });
+};
+
 const normalizeStr = (str) => {
   if (str === undefined || str === null) return '';
   return String(str).toLowerCase().trim();
@@ -502,68 +521,352 @@ const processPedidos = (siengeData, zeppData, romaneioData) => {
 // ---------------------------------------------------------
 // LÓGICA DE MEDIÇÕES
 // ---------------------------------------------------------
-const processMedicoes = (siengeData, zeppData, romaneioData) => {
-  const zeppMapCV = {};
-  zeppData.forEach(row => {
-    const cv = buildCredorValorKey(row);
-    if (!zeppMapCV[cv]) zeppMapCV[cv] = [];
-    zeppMapCV[cv].push(row);
+export const parseSiengeBoletimMedicoes = (rawRows) => {
+  const medicoes = [];
+  let currentObra = '';
+  let i = 0;
+
+  while (i < rawRows.length) {
+    const row = rawRows[i] || [];
+    const rowStr = row.map(c => c !== null && c !== undefined ? String(c).trim() : '');
+
+    if (rowStr[0] === 'Obra') {
+      currentObra = rowStr[2] || '';
+      i++;
+      continue;
+    }
+
+    if (rowStr[0] === 'Contrato' && rowStr[1] === 'Fornecedor') {
+      const dataRow = rawRows[i + 1] || [];
+      const dStr = dataRow.map(c => c !== null && c !== undefined ? String(c).trim() : '');
+
+      const contrato = dStr[0] || '';
+      const fornecedor = dStr[1] || '';
+      const numMedicao = dStr[4] || '';
+      const dtMedicao = dStr[6] || '';
+      const dtVencto = dStr[7] || '';
+
+      let totalBruto = 0;
+      let totalLiquido = 0;
+      let totalImpostos = 0;
+      let caucao = 0;
+      let descontos = 0;
+      let obsText = '';
+
+      let j = i + 1;
+      while (j < rawRows.length) {
+        const rScan = rawRows[j] || [];
+        const rScanStr = rScan.map(c => c !== null && c !== undefined ? String(c).trim() : '');
+
+        if (j > i + 1 && rScanStr[0] === 'Contrato' && rScanStr[1] === 'Fornecedor') break;
+        if (j > i + 1 && rScanStr[0] === 'Obra') break;
+
+        // Observação
+        if (rScanStr[3] && (rScanStr[3].includes('Medição') || rScanStr[3].includes('DESCONTOS') || rScanStr[3].includes('Abatimento') || rScanStr[3].includes('referente') || rScanStr[3].includes('Medicao'))) {
+          obsText += (' ' + rScanStr[3]).trim();
+        }
+
+        for (let cIdx = 0; cIdx < rScanStr.length; cIdx++) {
+          const cellVal = rScanStr[cIdx];
+          if (cellVal === 'Total bruto' && cIdx + 1 < rScan.length) {
+            totalBruto = normalizeNum(rScan[cIdx + 1]);
+          } else if (cellVal === 'Total líquido' && cIdx + 1 < rScan.length) {
+            totalLiquido = normalizeNum(rScan[cIdx + 1]);
+          } else if (cellVal === 'Total de impostos retido' && cIdx + 1 < rScan.length) {
+            totalImpostos = normalizeNum(rScan[cIdx + 1]);
+          } else if (cellVal === 'Caução' && cIdx + 1 < rScan.length) {
+            caucao = normalizeNum(rScan[cIdx + 1]);
+          } else if (cellVal === 'Descontos' && cIdx + 1 < rScan.length) {
+            descontos = normalizeNum(rScan[cIdx + 1]);
+          }
+        }
+
+        j++;
+        if (j - i > 40) break;
+      }
+
+      // Regex para extrair "Abatimento de Sinal" da observação (Regra #4)
+      let abatimentoSinal = 0;
+      const match = obsText.match(/Abatimento\s+de\s+Sinal\s*[=:]\s*R?\$?\s*([\d\.,]+)/i);
+      if (match) {
+        abatimentoSinal = normalizeNum(match[1]);
+      }
+
+      if (contrato || fornecedor) {
+        medicoes.push({
+          obra: currentObra,
+          contrato,
+          fornecedor,
+          numMedicao,
+          dtMedicao,
+          dtVencto,
+          totalBruto,
+          totalImpostos,
+          retencao: caucao, // Regra #3: Retenção = Caução
+          descontoSinal: abatimentoSinal, // Regra #4: Desconto de Sinal = Abatimento de Sinal
+          descontosFD: descontos,
+          outrosDescontos: 0,
+          totalLiquido,
+          calculadoLiquido: totalBruto - totalImpostos - caucao - abatimentoSinal - descontos,
+          observacao: obsText.trim()
+        });
+      }
+
+      i = j;
+    } else {
+      i++;
+    }
+  }
+
+  return medicoes;
+};
+
+const processMedicoes = (siengeData, zeppData, romaneioData, rawSiengeRows = []) => {
+  // 1. Extrair medições do Sienge (Boletim ou Tabela)
+  let siengeMedicoes = [];
+  if (rawSiengeRows && rawSiengeRows.length > 0) {
+    siengeMedicoes = parseSiengeBoletimMedicoes(rawSiengeRows);
+  }
+  
+  if (siengeMedicoes.length === 0 && siengeData && siengeData.length > 0) {
+    siengeData.forEach(row => {
+      const contrato = row['Contrato'] || row['ID CONTRATO'] || '';
+      const numMedicao = row['Medição'] || row['MEDIÇÃO'] || '';
+      const fornecedor = row['Fornecedor*'] || row['Fornecedor'] || row['RAZÃO SOCIAL'] || row['Razão Social'] || row['Credor'] || '';
+      if (!contrato && !numMedicao && !fornecedor) return;
+
+      const valorBruto = normalizeNum(row['Total bruto'] || row['VALOR TOTAL'] || row['Valor'] || 0);
+      const imposto = normalizeNum(row['Total de impostos retido'] || row['IMPOSTO'] || 0);
+      const retencao = normalizeNum(row['Caução'] || row['RETENÇÃO'] || 0);
+      const obs = String(row['Observação'] || row['Observação da medição'] || row['observacao'] || '');
+      let sinal = normalizeNum(row['DESCONTO DE SINAL'] || row['Desconto de Sinal'] || 0);
+      if (sinal === 0) {
+        const m = obs.match(/Abatimento\s+de\s+Sinal\s*[=:]\s*R?\$?\s*([\d\.,]+)/i);
+        if (m) sinal = normalizeNum(m[1]);
+      }
+      const descontosFD = normalizeNum(row['DESCONTOS FD'] || row['Descontos FD'] || row['Descontos'] || 0);
+      const outrosDescontos = normalizeNum(row['OUTROS DESCONTOS'] || row['Outros Descontos'] || 0);
+      const valorLiquido = valorBruto - imposto - retencao - sinal - descontosFD - outrosDescontos;
+
+      siengeMedicoes.push({
+        contrato,
+        numMedicao,
+        fornecedor,
+        totalBruto: valorBruto,
+        totalImpostos: imposto,
+        retencao,
+        descontoSinal: sinal,
+        descontosFD,
+        outrosDescontos,
+        totalLiquido: normalizeNum(row['Total líquido'] || row['VALOR LÍQUIDO'] || valorLiquido),
+        calculadoLiquido: valorLiquido,
+        dtVencto: row['Data de vencimento'] || row['Vencimento'] || '',
+        observacao: obs
+      });
+    });
+  }
+
+  // 2. Normalizar base de Controle (romaneioData / CONTROLE DE MEDIÇÕES.xlsx)
+  const cleanControle = (romaneioData || []).map(row => {
+    const cleaned = {};
+    Object.keys(row).forEach(k => {
+      cleaned[k.trim()] = row[k];
+    });
+    return cleaned;
   });
 
-  const romMapValor = {};
-  romaneioData.forEach(row => {
-    // A base de Medições não tem ID e nem Fornecedor claramente, então cruzamos pelo Valor!
-    const valorStr = getValor(row).toFixed(2);
-    if (!romMapValor[valorStr]) romMapValor[valorStr] = [];
-    romMapValor[valorStr].push(row);
+  const controleMapKey = {};
+  const controleMapValorFornec = {};
+  const controleMapValor = {};
+  const matchedControleIndexes = new Set();
+
+  cleanControle.forEach((c, idx) => {
+    const contrato = String(c['ID CONTRATO'] || '').replace(/\s+/g, '').toUpperCase();
+    const med = String(c['MEDIÇÃO'] || '').replace(/\s+/g, '');
+    if (contrato && med) {
+      controleMapKey[`${contrato}_${med}`] = { row: c, idx };
+    }
+    const valorTotalStr = normalizeNum(c['VALOR TOTAL']).toFixed(2);
+    const fornecNorm = normalizeStr(c['RAZÃO SOCIAL'] || '');
+    if (fornecNorm && valorTotalStr !== '0.00') {
+      controleMapValorFornec[`${fornecNorm}_${valorTotalStr}`] = { row: c, idx };
+    }
+    if (valorTotalStr !== '0.00' && !controleMapValor[valorTotalStr]) {
+      controleMapValor[valorTotalStr] = { row: c, idx };
+    }
+  });
+
+  // 3. Normalizar base Zepp (ZEPP_MEDIÇÕES.xlsx)
+  const zeppMapKey = {};
+  const zeppMapValor = {};
+  const matchedZeppIndexes = new Set();
+
+  (zeppData || []).forEach((z, idx) => {
+    const codOrigem = String(z['Código Origem'] || '').trim();
+    const parts = codOrigem.split('/').map(p => p.trim()).filter(Boolean);
+    let contract = '';
+    let medicao = '';
+    if (parts.length >= 4) {
+      contract = `${parts[0]}/${parts[1]}`.replace(/\s+/g, '').toUpperCase();
+      medicao = parts[3].replace(/\s+/g, '');
+    } else if (parts.length === 3) {
+      contract = parts[0].replace(/\s+/g, '').toUpperCase();
+      medicao = parts[2].replace(/\s+/g, '');
+    } else {
+      contract = codOrigem.replace(/\s+/g, '').toUpperCase();
+    }
+
+    if (contract && medicao) {
+      const key = `${contract}_${medicao}`;
+      if (!zeppMapKey[key]) zeppMapKey[key] = [];
+      zeppMapKey[key].push({ row: z, idx });
+    }
+
+    const valorZepp = normalizeNum(z['Valor']);
+    const valorStr = valorZepp.toFixed(2);
+    if (valorStr !== '0.00') {
+      if (!zeppMapValor[valorStr]) zeppMapValor[valorStr] = [];
+      zeppMapValor[valorStr].push({ row: z, idx });
+    }
   });
 
   const results = [];
-  let kpi = { total: 0, pronto: 0, aprovacao: 0, acao: 0 };
+  let valorTotalMedido = 0;
+  let valorAprovado = 0;
+  let valorEmAprovacao = 0;
+  let valorLancado = 0;
+  let valorFaltaLancar = 0;
 
-  siengeData.forEach(siengeRow => {
-    if (!siengeRow['Contrato'] && !siengeRow['Medição']) return;
-    const idSienge = String(siengeRow['Contrato'] || '') + (siengeRow['Medição'] ? ` / ${siengeRow['Medição']}` : '');
-    const cv = buildCredorValorKey(siengeRow);
-    const valorStr = getValor(siengeRow).toFixed(2);
+  // Processar itens do Sienge
+  siengeMedicoes.forEach(sm => {
+    const contractNorm = String(sm.contrato || '').replace(/\s+/g, '').toUpperCase();
+    const medNorm = String(sm.numMedicao || '').replace(/\s+/g, '');
+    const key = `${contractNorm}_${medNorm}`;
+    const valorTotalStr = normalizeNum(sm.totalBruto).toFixed(2);
+    const fornecNorm = normalizeStr(sm.fornecedor || '');
 
-    const zeppMatches = zeppMapCV[cv] || [];
-    const romaneioMatches = romMapValor[valorStr] || [];
-
-    const inZepp = zeppMatches.length > 0;
-    const inRomaneio = romaneioMatches.length > 0;
-
-    let acao = '';
-    let statusZepp = inZepp ? (zeppMatches[0]['Status'] || 'Aprovado') : 'Não encontrado';
-    let noRomaneio = inRomaneio ? 'Encontrado' : 'Sem Romaneio';
-
-    const zeppStatusLower = statusZepp.toLowerCase();
-    
-    if (inRomaneio && inZepp && (zeppStatusLower.includes('aprovado') || zeppStatusLower.includes('concluído'))) {
-      acao = 'OK: Base Atualizada e Aprovado'; kpi.pronto++;
-    } else if (inRomaneio && inZepp) {
-      acao = 'ALERTA: Em Aprovação no Zepp'; kpi.aprovacao++;
-    } else if (inZepp && !inRomaneio) {
-      acao = 'ALERTA: Falta na Base'; zeppStatusLower.includes('aprov') ? kpi.acao++ : kpi.aprovacao++;
-    } else if (inRomaneio && !inZepp) {
-      acao = 'ALERTA: Falta Zepp'; kpi.acao++;
-    } else {
-      acao = 'ALERTA: Falta Base e Zepp'; kpi.acao++;
+    // Buscar no Zepp
+    let zMatch = null;
+    if (zeppMapKey[key] && zeppMapKey[key].length > 0) {
+      zMatch = zeppMapKey[key][0];
+    } else if (zeppMapValor[valorTotalStr] && zeppMapValor[valorTotalStr].length > 0) {
+      zMatch = zeppMapValor[valorTotalStr][0];
     }
 
-    kpi.total++;
+    if (zMatch) {
+      matchedZeppIndexes.add(zMatch.idx);
+    }
+
+    const zRow = zMatch ? zMatch.row : null;
+    const statusZepp = zRow ? (zRow['Status Atual Proc.'] || zRow['Status'] || 'Aprovado') : 'Não encontrado';
+    const statusZeppLower = statusZepp.toLowerCase();
+
+    // Buscar no Controle
+    let cMatch = null;
+    if (controleMapKey[key]) {
+      cMatch = controleMapKey[key];
+    } else if (controleMapValorFornec[`${fornecNorm}_${valorTotalStr}`]) {
+      cMatch = controleMapValorFornec[`${fornecNorm}_${valorTotalStr}`];
+    } else if (controleMapValor[valorTotalStr]) {
+      cMatch = controleMapValor[valorTotalStr];
+    }
+
+    if (cMatch) {
+      matchedControleIndexes.add(cMatch.idx);
+    }
+    const cRow = cMatch ? cMatch.row : null;
+
+    const valorBruto = sm.totalBruto;
+    const valorImposto = sm.totalImpostos;
+    const valorRetencao = sm.retencao;
+    const valorDescontoSinal = sm.descontoSinal;
+    const valorDescontosFD = sm.descontosFD;
+    const valorOutrosDescontos = cRow ? normalizeNum(cRow['OUTROS DESCONTOS']) : 0;
+    const valorLiquido = sm.calculadoLiquido;
+
+    valorTotalMedido += valorBruto;
+    valorLancado += valorBruto;
+
+    let acao = '';
+    if (zRow && (statusZeppLower.includes('aprovado') || statusZeppLower.includes('concluido') || statusZeppLower.includes('concluído'))) {
+      valorAprovado += valorBruto;
+      acao = 'OK: Lançado e Aprovado';
+    } else if (zRow && (statusZeppLower.includes('reprovado') || statusZeppLower.includes('cancelado'))) {
+      acao = 'ALERTA: Reprovado no Zepp';
+    } else if (zRow) {
+      valorEmAprovacao += valorBruto;
+      acao = 'ALERTA: Em Aprovação no Zepp';
+    } else {
+      acao = 'ALERTA: Lançado sem Workflow Zepp';
+    }
+
     results.push({
-      id: idSienge || '-',
-      credor: siengeRow['Fornecedor*'] || siengeRow['Cliente/Fornecedor'] || '-',
-      vencimento: siengeRow['Data de vencimento'] || siengeRow['Data da medição'] || '-',
-      valor: getValor(siengeRow),
-      statusZepp,
-      noRomaneio,
-      observacao: siengeRow['Observação da medição'] || '-',
-      acao,
-      originalSienge: siengeRow
+      medicao: sm.numMedicao || (cRow ? cRow['MEDIÇÃO'] : '-'),
+      cnpj: cRow ? (cRow['CNPJ'] || '-') : '-',
+      credor: sm.fornecedor || (cRow ? cRow['RAZÃO SOCIAL'] : '-'),
+      idContrato: sm.contrato || (cRow ? cRow['ID CONTRATO'] : '-'),
+      valorContrato: cRow ? normalizeNum(cRow['VALOR DO CONTRATO']) : 0,
+      valorTotal: valorBruto,
+      imposto: valorImposto,
+      retencao: valorRetencao,
+      descontoSinal: valorDescontoSinal,
+      descontosFD: valorDescontosFD,
+      outrosDescontos: valorOutrosDescontos,
+      valorLiquido: valorLiquido,
+      statusZepp: statusZepp,
+      acao: acao,
+      // Campos de compatibilidade
+      id: `${sm.contrato || (cRow ? cRow['ID CONTRATO'] : '')} / ${sm.numMedicao || (cRow ? cRow['MEDIÇÃO'] : '')}`,
+      valor: valorLiquido,
+      vencimento: sm.dtVencto || sm.dtMedicao || (cRow ? cRow['Vencimento'] : '-'),
+      noRomaneio: cRow ? 'Encontrado' : 'Não Encontrado',
+      observacao: sm.observacao || '-'
     });
   });
+
+  // Verificar itens de Controle que não foram encontrados no Sienge
+  cleanControle.forEach((c, idx) => {
+    if (!matchedControleIndexes.has(idx)) {
+      const valorBruto = normalizeNum(c['VALOR TOTAL']);
+      const valorLiquido = normalizeNum(c['VALOR LÍQUIDO']);
+      valorTotalMedido += valorBruto;
+      valorFaltaLancar += valorBruto;
+
+      results.push({
+        medicao: c['MEDIÇÃO'] || '-',
+        cnpj: c['CNPJ'] || '-',
+        credor: c['RAZÃO SOCIAL'] || '-',
+        idContrato: c['ID CONTRATO'] || '-',
+        valorContrato: normalizeNum(c['VALOR DO CONTRATO']),
+        valorTotal: valorBruto,
+        imposto: normalizeNum(c['IMPOSTO']),
+        retencao: normalizeNum(c['RETENÇÃO']),
+        descontoSinal: normalizeNum(c['DESCONTO DE SINAL']),
+        descontosFD: normalizeNum(c['DESCONTOS FD']),
+        outrosDescontos: normalizeNum(c['OUTROS DESCONTOS']),
+        valorLiquido: valorLiquido,
+        statusZepp: 'Pendente Lançamento',
+        acao: 'ALERTA: Falta Lançar no Sienge',
+        id: `${c['ID CONTRATO']} / ${c['MEDIÇÃO']}`,
+        valor: valorLiquido,
+        vencimento: '-',
+        noRomaneio: 'Encontrado no Controle',
+        observacao: 'Item presente na planilha de Controle mas não localizado no Boletim do Sienge.'
+      });
+    }
+  });
+
+  const kpi = {
+    valorTotalMedido,
+    valorAprovado,
+    valorEmAprovacao,
+    valorLancado,
+    valorFaltaLancar,
+    total: results.length,
+    pronto: results.filter(r => r.acao && r.acao.startsWith('OK')).length,
+    aprovacao: results.filter(r => r.acao && r.acao.includes('Em Aprovação')).length,
+    acao: results.filter(r => r.acao && r.acao.startsWith('ALERTA')).length
+  };
 
   return { results, kpi };
 };
@@ -583,8 +886,10 @@ export const processConciliacao = async (files, categoryName = 'Títulos') => {
       return processContratos(siengeData, zeppData, romaneioData);
     case 'Pedidos':
       return processPedidos(siengeData, zeppData, romaneioData);
-    case 'Medições':
-      return processMedicoes(siengeData, zeppData, romaneioData);
+    case 'Medições': {
+      const rawSiengeRows = files.sienge ? await readExcelFileRawRows(files.sienge) : [];
+      return processMedicoes(siengeData, zeppData, romaneioData, rawSiengeRows);
+    }
     case 'Conciliação Saldos Contábeis':
       return processConciliacaoSaldos(files);
     default:
