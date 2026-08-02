@@ -25,6 +25,8 @@ export default function Dashboard({ data, kpi, onReimport, categoryName, finalWo
     valorAdiantamento: '',
     valorDescontado: '',
     valorRetencao: '',
+    // Pedidos
+    mes: '',
     // Medições
     medicao: '',
     idContrato: '',
@@ -93,6 +95,20 @@ export default function Dashboard({ data, kpi, onReimport, categoryName, finalWo
       return matchesSearch && matchesStatus && matchesMedicao && matchesCnpj && matchesCredor && matchesIdContrato && matchesValorContrato && matchesValorTotal && matchesImposto && matchesRetencao && matchesDescontoSinal && matchesDescontosFD && matchesOutrosDescontos && matchesValorLiquido && matchesStatusZepp && matchesAcao;
     }
 
+    if (categoryName === 'Pedidos') {
+      const matchesMes = !columnFilters.mes || String(item.mes || '').toLowerCase().includes(columnFilters.mes.toLowerCase());
+      const matchesId = !columnFilters.id || String(item.id || '').toLowerCase().includes(columnFilters.id.toLowerCase());
+      const matchesCredor = !columnFilters.credor || String(item.credor || '').toLowerCase().includes(columnFilters.credor.toLowerCase());
+      const matchesCnpj = !columnFilters.cnpj || String(item.cnpj || '').toLowerCase().includes(columnFilters.cnpj.toLowerCase());
+      const matchesApropriacao = !columnFilters.apropriacao || String(item.apropriacao || '').toLowerCase().includes(columnFilters.apropriacao.toLowerCase());
+      const matchesValor = !columnFilters.valor || formatCurrency(item.valor).toLowerCase().includes(columnFilters.valor.toLowerCase());
+      const matchesVinculo = !columnFilters.vinculoFaturamentoDireto || String(item.vinculoFaturamentoDireto || '').toLowerCase().includes(columnFilters.vinculoFaturamentoDireto.toLowerCase());
+      const matchesStatusZepp = !columnFilters.statusZepp || String(item.statusZepp || '').toLowerCase().includes(columnFilters.statusZepp.toLowerCase());
+      const matchesAcao = !columnFilters.acao || String(item.acao || '').toLowerCase().includes(columnFilters.acao.toLowerCase());
+
+      return matchesSearch && matchesStatus && matchesMes && matchesId && matchesCredor && matchesCnpj && matchesApropriacao && matchesValor && matchesVinculo && matchesStatusZepp && matchesAcao;
+    }
+
     const matchesId = String(item.id || '').toLowerCase().includes(columnFilters.id.toLowerCase());
     const matchesCredor = String(item.credor || '').toLowerCase().includes(columnFilters.credor.toLowerCase());
     const matchesCnpj = String(item.cnpj || '').toLowerCase().includes(columnFilters.cnpj.toLowerCase());
@@ -156,6 +172,7 @@ export default function Dashboard({ data, kpi, onReimport, categoryName, finalWo
       }
       if (categoryName === 'Pedidos') {
         return {
+          'MÊS': d.mes,
           'PEDIDO': d.id,
           'CREDOR': d.credor,
           'CNPJ': d.cnpj,
@@ -163,7 +180,6 @@ export default function Dashboard({ data, kpi, onReimport, categoryName, finalWo
           'VALOR': d.valor,
           'VÍNCULO DE FATURAMENTO DIRETO': d.vinculoFaturamentoDireto,
           'STATUS ZEPP': d.statusZepp,
-          'OBSERVAÇÃO': d.observacao,
           'AÇÃO REQUERIDA': d.acao
         };
       }
@@ -212,6 +228,7 @@ export default function Dashboard({ data, kpi, onReimport, categoryName, finalWo
       }
       if (categoryName === 'Pedidos') {
         return {
+          'MÊS': d.mes,
           'PEDIDO': d.id,
           'CREDOR': d.credor,
           'CNPJ': d.cnpj,
@@ -219,7 +236,6 @@ export default function Dashboard({ data, kpi, onReimport, categoryName, finalWo
           'VALOR': d.valor,
           'VÍNCULO DE FATURAMENTO DIRETO': d.vinculoFaturamentoDireto,
           'STATUS ZEPP': d.statusZepp,
-          'OBSERVAÇÃO': d.observacao,
           'AÇÃO REQUERIDA': d.acao
         };
       }
@@ -249,7 +265,7 @@ export default function Dashboard({ data, kpi, onReimport, categoryName, finalWo
     const tableColumn = categoryName === 'Medições'
       ? ["Medição", "CNPJ", "Razão Social", "ID Contrato", "Valor Contrato", "Total", "Imposto", "Retenção", "Sinal", "Desc. FD", "Líquido", "Status Zepp", "Ação"]
       : categoryName === 'Pedidos' 
-        ? ["Pedido", "Credor", "CNPJ", "Apropriação", "Valor", "Vínc. Faturamento", "Status Zepp", "Observação", "Ação"]
+        ? ["Mês", "Pedido", "Credor", "CNPJ", "Apropriação", "Valor", "Vínc. Faturamento", "Status Zepp", "Ação"]
         : categoryName === 'Títulos'
           ? [getIDHeaderName(), "Tipo de Documento", "Credor", "Data de Emissão", "Vencimento", "Nº da NF", "Valor", "Status Zepp", "Romaneio", "Ação"]
           : [getIDHeaderName(), "Credor", "Vencimento", "Valor", "Status Zepp", "Romaneio", "Ação"];
@@ -259,7 +275,7 @@ export default function Dashboard({ data, kpi, onReimport, categoryName, finalWo
       const rowData = categoryName === 'Medições'
         ? [item.medicao, item.cnpj, item.credor, item.idContrato, formatCurrency(item.valorContrato), formatCurrency(item.valorTotal), formatCurrency(item.imposto), formatCurrency(item.retencao), formatCurrency(item.descontoSinal), formatCurrency(item.descontosFD), formatCurrency(item.valorLiquido), item.statusZepp, item.acao]
         : categoryName === 'Pedidos'
-          ? [item.id, item.credor, item.cnpj, item.apropriacao, formatCurrency(item.valor), item.vinculoFaturamentoDireto, item.statusZepp, item.observacao, item.acao]
+          ? [item.mes, item.id, item.credor, item.cnpj, item.apropriacao, formatCurrency(item.valor), item.vinculoFaturamentoDireto, item.statusZepp, item.acao]
           : categoryName === 'Títulos'
             ? [item.id, item.tipoDocumento, item.credor, item.dataEmissao, item.vencimento, item.numeroNF, formatCurrency(item.valor), item.statusZepp, item.noRomaneio, item.acao]
             : [item.id, item.credor, item.vencimento, formatCurrency(item.valor), item.statusZepp, item.noRomaneio, item.acao];
@@ -494,6 +510,10 @@ export default function Dashboard({ data, kpi, onReimport, categoryName, finalWo
               ) : categoryName === 'Pedidos' ? (
                 <tr>
                   <th>
+                    <div>MÊS</div>
+                    <input type="text" placeholder="Filtrar..." value={columnFilters.mes} onChange={(e) => handleColumnFilterChange('mes', e.target.value)} className="col-filter" />
+                  </th>
+                  <th>
                     <div>PEDIDO</div>
                     <input type="text" placeholder="Filtrar..." value={columnFilters.id} onChange={(e) => handleColumnFilterChange('id', e.target.value)} className="col-filter" />
                   </th>
@@ -520,10 +540,6 @@ export default function Dashboard({ data, kpi, onReimport, categoryName, finalWo
                   <th>
                     <div>STATUS ZEPP</div>
                     <input type="text" placeholder="Filtrar..." value={columnFilters.statusZepp} onChange={(e) => handleColumnFilterChange('statusZepp', e.target.value)} className="col-filter" />
-                  </th>
-                  <th>
-                    <div>OBSERVAÇÃO</div>
-                    <input type="text" placeholder="Filtrar..." value={columnFilters.observacao} onChange={(e) => handleColumnFilterChange('observacao', e.target.value)} className="col-filter" />
                   </th>
                   <th>
                     <div>AÇÃO REQUERIDA</div>
@@ -635,16 +651,14 @@ export default function Dashboard({ data, kpi, onReimport, categoryName, finalWo
                       </>
                     ) : categoryName === 'Pedidos' ? (
                       <>
-                        <td>{item.id}</td>
+                        <td>{item.mes}</td>
+                        <td style={{ fontWeight: 600 }}>{item.id}</td>
                         <td style={{ fontWeight: 500 }}>{item.credor}</td>
                         <td>{item.cnpj}</td>
                         <td>{item.apropriacao}</td>
                         <td style={{ fontWeight: 600 }}>{formatCurrency(item.valor)}</td>
                         <td>{item.vinculoFaturamentoDireto}</td>
                         <td>{item.statusZepp}</td>
-                        <td style={{ color: 'var(--text-muted)', fontSize: '0.8rem', maxWidth: '200px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                          {item.observacao}
-                        </td>
                         <td>
                           <span className={`badge ${getBadgeClass(item.acao)}`}>
                             {item.acao}

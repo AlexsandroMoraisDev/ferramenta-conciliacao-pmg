@@ -78,6 +78,24 @@ export default function ImportModal({ onImport, categoryName, onClose }) {
                 onChange={(e) => handleFileChange('romaneio', e)} 
               />
             </>
+          ) : categoryName === 'Pedidos' ? (
+            <>
+              <FileDropZone 
+                title="Sienge (SIENGE_PEDIDOS)" 
+                file={files.sienge} 
+                onChange={(e) => handleFileChange('sienge', e)} 
+              />
+              <FileDropZone 
+                title="Zepp (ZEPP_PEDIDOS)" 
+                file={files.zepp} 
+                onChange={(e) => handleFileChange('zepp', e)} 
+              />
+              <FileDropZone 
+                title="Controle de Pedidos" 
+                file={files.romaneio} 
+                onChange={(e) => handleFileChange('romaneio', e)} 
+              />
+            </>
           ) : (
             <>
               <FileDropZone 

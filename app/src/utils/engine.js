@@ -426,93 +426,212 @@ const processContratos = (siengeData, zeppData, romaneioData) => {
 // ---------------------------------------------------------
 // LÓGICA DE PEDIDOS
 // ---------------------------------------------------------
+const formatPedido = (p) => {
+  if (!p) return '-';
+  const str = String(p).trim();
+  if (str.toUpperCase().startsWith('PPC/')) return str.toUpperCase();
+  const digits = str.replace(/\D/g, '');
+  if (digits) return 'PPC/' + digits;
+  return str;
+};
+
+const extractPedidoNum = (p) => {
+  if (!p) return '';
+  const digits = String(p).replace(/\D/g, '');
+  if (digits) {
+    const parsed = parseInt(digits, 10);
+    if (!isNaN(parsed)) return String(parsed);
+  }
+  return String(p).trim().toUpperCase();
+};
+
+const formatApropriacao = (a) => {
+  if (!a) return '-';
+  const str = String(a).trim();
+  if (str.includes('.')) return str;
+  const hasS = str.toUpperCase().endsWith('S');
+  const digits = str.replace(/\D/g, '');
+  if (digits.length === 10) {
+    const formatted = digits.slice(0, 1) + '.' + digits.slice(1, 4) + '.' + digits.slice(4, 7) + '.' + digits.slice(7, 10);
+    return hasS ? formatted + 'S' : formatted;
+  }
+  return str;
+};
+
+const formatMes = (dateStr, defaultMes = '') => {
+  if (defaultMes && defaultMes !== '-') return defaultMes;
+  if (!dateStr) return '-';
+  const str = String(dateStr).trim();
+  if (str.match(/^[A-Z]{3}\.\d{2}$/i)) return str.toUpperCase();
+  const parts = str.split('/');
+  if (parts.length >= 2) {
+    const monthNum = parseInt(parts[1], 10);
+    const yearStr = parts[2] ? parts[2].slice(-2) : '26';
+    const monthNames = ['JAN', 'FEV', 'MAR', 'ABR', 'MAI', 'JUN', 'JUL', 'AGO', 'SET', 'OUT', 'NOV', 'DEZ'];
+    if (monthNum >= 1 && monthNum <= 12) {
+      return monthNames[monthNum - 1] + '.' + yearStr;
+    }
+  }
+  return str;
+};
+
+const cleanSupplierName = (name) => {
+  if (!name) return '-';
+  const str = String(name).trim();
+  const match = str.match(/^\d+\s*-\s*(.+)$/);
+  if (match) return match[1].trim();
+  return str;
+};
+
 const processPedidos = (siengeData, zeppData, romaneioData) => {
-  const zeppMapID = {};
-  const zeppMapCV = {};
-  zeppData.forEach(row => {
-    const id = String(row['Código Origem'] || '').trim();
-    row._extractedId = id;
-    const cv = buildCredorValorKey(row);
-    if (!zeppMapCV[cv]) zeppMapCV[cv] = [];
-    zeppMapCV[cv].push(row);
+  // 1. Normalizar base de Controle de Pedidos (CONTROLE DE PEDIDOS.xlsx)
+  const cleanControle = (romaneioData || []).map(row => {
+    const cleaned = {};
+    Object.keys(row).forEach(k => {
+      cleaned[k.trim()] = row[k];
+    });
+    return cleaned;
+  }).filter(r => r['PEDIDO'] !== undefined || r['CREDOR'] !== undefined);
 
-    if (id) {
-      if (!zeppMapID[id]) zeppMapID[id] = [];
-      zeppMapID[id].push(row);
-    }
-  });
+  const controleList = cleanControle.map((c, idx) => ({
+    idx,
+    row: c,
+    pedidoNum: extractPedidoNum(c['PEDIDO']),
+    mes: c['MÊS'] || '',
+    credor: c['CREDOR'] || '',
+    apropriacao: formatApropriacao(c['APROPRIAÇÃO']),
+    valor: normalizeNum(c['VALOR']),
+    vinculoFD: c['VÍNCULO DE FATURAMENTO DIRETO'] || '-',
+    cnpj: c['CNPJ'] || c['CNPJ/CPF'] || '-'
+  }));
 
-  const romMapID = {};
-  const romMapCV = {};
-  romaneioData.forEach(row => {
-    const id = String(row['PEDIDO'] || '').trim();
-    row._extractedId = id;
-    const cv = buildCredorValorKey(row);
-    if (!romMapCV[cv]) romMapCV[cv] = [];
-    romMapCV[cv].push(row);
+  const matchedControleIndexes = new Set();
 
-    if (id) {
-      if (!romMapID[id]) romMapID[id] = [];
-      romMapID[id].push(row);
-    }
-  });
+  // 2. Normalizar base do Zepp (ZEPP_PEDIDOS.xlsx)
+  const zeppList = (zeppData || []).map((z, idx) => ({
+    idx,
+    row: z,
+    pedidoNum: extractPedidoNum(z['Código Origem']),
+    status: z['Status Atual Proc.'] || z['Status'] || '',
+    valor: normalizeNum(z['Valor']),
+    dtEmissao: z['Dt. Emissão'] || '',
+    observacaoProc: z['Observação Proc'] || ''
+  })).filter(z => z.pedidoNum);
 
+  const matchedZeppIndexes = new Set();
+
+  // 3. Processar itens do Sienge (SIENGE_PEDIDOS.xlsx)
   const results = [];
   let kpi = { total: 0, pronto: 0, aprovacao: 0, acao: 0 };
 
-  siengeData.forEach(siengeRow => {
-    if (!siengeRow['N. do Pedido']) return;
-    const idSienge = String(siengeRow['N. do Pedido'] || '').trim();
-    const cv = buildCredorValorKey(siengeRow);
+  (siengeData || []).forEach(s => {
+    const numPedido = extractPedidoNum(s['N. do Pedido']);
+    if (!numPedido) return;
 
-    // Na base Pedido (Romaneio), o ID vem como "PPC/25660". O Sienge talvez venha "25660".
-    const idSiengeNum = idSienge.replace(/\D/g, ''); // Apenas números
-    
-    // Tenta encontrar ID exato ou contendo o número
-    // Tenta encontrar ID exato ou contendo o número
-    const zeppMatches = filterFallbackMatches(zeppMapCV[cv] || [], idSiengeNum);
-    const romaneioMatches = (idSienge && romMapID[idSienge]) ? romMapID[idSienge] : (
-       Object.keys(romMapID).find(k => k.includes(idSiengeNum)) 
-        ? romMapID[Object.keys(romMapID).find(k => k.includes(idSiengeNum))] 
-        : filterFallbackMatches(romMapCV[cv] || [], idSiengeNum)
-    );
+    const valorSienge = normalizeNum(s['Total do Pedido'] || s['Total Entregue'] || 0);
+    const dtPedido = s['Data do Pedido'] || '';
+    const fornecedor = cleanSupplierName(s['Fornecedor'] || '');
+    const centroCustoSienge = s['Cód. Centro Custo'] || s['Centro Custo'] || '';
+    const situacao = s['Situação dos Pedidos'] || '';
 
-    const inZepp = zeppMatches.length > 0;
-    const inRomaneio = romaneioMatches.length > 0;
+    // Match no Zepp (estritamente por número do pedido)
+    const zMatch = zeppList.find(z => z.pedidoNum === numPedido);
+    if (zMatch) matchedZeppIndexes.add(zMatch.idx);
+    const zRow = zMatch ? zMatch.row : null;
+    const statusZepp = zRow ? (zMatch.status || 'Aprovado') : 'Não encontrado';
+    const statusZeppLower = statusZepp.toLowerCase();
+
+    // Match no Controle (estritamente por número do pedido)
+    const cMatch = controleList.find(c => c.pedidoNum === numPedido);
+    if (cMatch) matchedControleIndexes.add(cMatch.idx);
+    const cRow = cMatch ? cMatch.row : null;
+
+    const mes = formatMes(dtPedido, cMatch ? cMatch.mes : '');
+    const apropriacao = cMatch && cMatch.apropriacao !== '-' ? cMatch.apropriacao : formatApropriacao(centroCustoSienge);
+    const vinculoFD = cMatch ? cMatch.vinculoFD : '-';
+    const cnpj = (cMatch && cMatch.cnpj && cMatch.cnpj !== '-') ? cMatch.cnpj : (s['CNPJ'] || s['CNPJ/CPF'] || '-');
+    const credor = cMatch && cMatch.credor ? cMatch.credor : fornecedor;
+    const valor = valorSienge > 0 ? valorSienge : (cMatch ? cMatch.valor : (zMatch ? zMatch.valor : 0));
+
+    const inControle = cRow !== null;
+    const inZeppAprovado = zRow && (statusZeppLower.includes('aprovado') || statusZeppLower.includes('concluido') || statusZeppLower.includes('concluído'));
+    const inZeppEmAprovacao = zRow && (statusZeppLower.includes('aprovação') || statusZeppLower.includes('aprovacao') || statusZeppLower.includes('andamento') || statusZeppLower.includes('pendente'));
+    const inZeppReprovado = zRow && (statusZeppLower.includes('reprovado') || statusZeppLower.includes('cancelado'));
 
     let acao = '';
-    let statusZepp = inZepp ? (zeppMatches[0]['Status'] || 'Aprovado') : 'Não encontrado';
-    let noRomaneio = inRomaneio ? 'Encontrado' : 'Sem Romaneio';
-
-    const zeppStatusLower = statusZepp.toLowerCase();
-    
-    if (inRomaneio && inZepp && (zeppStatusLower.includes('aprovado') || zeppStatusLower.includes('concluído'))) {
-      acao = 'OK: CONCILIADO'; kpi.pronto++;
-    } else if (inRomaneio && inZepp) {
-      acao = 'ALERTA: PENDENTE ZEPP'; kpi.aprovacao++;
-    } else if (inZepp && !inRomaneio) {
-      acao = 'ALERTA: CADASTRAR ROMANEIO'; kpi.acao++;
-    } else if (inRomaneio && !inZepp) {
-      acao = 'ALERTA: LANÇAR NO ZEPP'; kpi.acao++;
+    if (inControle) {
+      if (inZeppAprovado) {
+        acao = 'OK: Lançado';
+        kpi.pronto++;
+      } else if (inZeppEmAprovacao) {
+        acao = 'ALERTA: Lançado (Em Aprovação no Zepp)';
+        kpi.aprovacao++;
+      } else if (inZeppReprovado) {
+        acao = 'ALERTA: Lançado (Reprovado no Zepp)';
+        kpi.acao++;
+      } else {
+        acao = 'OK: Lançado';
+        kpi.pronto++;
+      }
     } else {
-      acao = 'ALERTA: VERIFICAR DADOS'; kpi.acao++;
+      if (inZeppAprovado) {
+        acao = 'Aguardando Lançamento';
+        kpi.acao++;
+      } else if (inZeppEmAprovacao) {
+        acao = 'ALERTA: Em Aprovação no Zepp';
+        kpi.aprovacao++;
+      } else if (inZeppReprovado) {
+        acao = 'ALERTA: Reprovado no Zepp';
+        kpi.acao++;
+      } else {
+        acao = 'ALERTA: Não Encontrado no Zepp/Controle';
+        kpi.acao++;
+      }
     }
 
     kpi.total++;
     results.push({
-      id: idSienge || '-',
-      credor: siengeRow['Fornecedor'] || '-',
-      cnpj: siengeRow['CNPJ/CPF'] || siengeRow['CNPJ'] || (inRomaneio ? (romaneioMatches[0]['CNPJ/CPF'] || romaneioMatches[0]['CNPJ']) : '') || '-',
-      apropriacao: inRomaneio ? (romaneioMatches[0]['APROPRIAÇÃO'] || '-') : '-',
-      vencimento: siengeRow['Data do Pedido'] || '-', // kept for compatibility with excel export if needed, but won't render
-      valor: getValor(siengeRow),
-      vinculoFaturamentoDireto: inRomaneio ? (romaneioMatches[0]['VÍNCULO DE FATURAMENTO DIRETO'] || '-') : '-',
+      mes,
+      id: formatPedido(numPedido),
+      credor,
+      cnpj,
+      apropriacao,
+      valor,
+      vinculoFaturamentoDireto: vinculoFD,
       statusZepp,
-      noRomaneio, // kept for compatibility
-      observacao: siengeRow['Situação dos Pedidos'] || '-',
+      observacao: situacao,
       acao,
-      originalSienge: siengeRow
+      noRomaneio: inControle ? 'Encontrado no Controle' : 'Não Encontrado no Controle',
+      vencimento: dtPedido,
+      originalSienge: s,
+      originalZepp: zRow,
+      originalControle: cRow
     });
+  });
+
+  // Verificar itens de Controle não encontrados no Sienge
+  controleList.forEach((c, idx) => {
+    if (!matchedControleIndexes.has(idx)) {
+      kpi.total++;
+      kpi.acao++;
+      results.push({
+        mes: c.mes || '-',
+        id: formatPedido(c.pedidoNum),
+        credor: c.credor || '-',
+        cnpj: c.cnpj || '-',
+        apropriacao: c.apropriacao || '-',
+        valor: c.valor,
+        vinculoFaturamentoDireto: c.vinculoFD || '-',
+        statusZepp: 'Encontrado no Controle',
+        observacao: 'Item presente no Controle de Pedidos mas não localizado no Sienge',
+        acao: 'ALERTA: Falta no Sienge',
+        noRomaneio: 'Encontrado no Controle',
+        vencimento: '-',
+        originalSienge: null,
+        originalZepp: null,
+        originalControle: c.row
+      });
+    }
   });
 
   return { results, kpi };
