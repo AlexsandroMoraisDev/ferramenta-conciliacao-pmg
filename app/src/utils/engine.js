@@ -630,6 +630,51 @@ export const parseSiengeBoletimMedicoes = (rawRows) => {
   return medicoes;
 };
 
+const normalizeMed = (m) => {
+  if (m === null || m === undefined || m === '') return '';
+  const str = String(m).trim();
+  const digits = str.replace(/[^0-9]/g, '');
+  if (digits) {
+    const parsed = parseInt(digits, 10);
+    if (!isNaN(parsed)) return String(parsed);
+  }
+  return str.toUpperCase().replace(/\s+/g, '');
+};
+
+const extractContractCore = (ct) => {
+  if (!ct) return '';
+  const s = String(ct).toUpperCase().replace(/\s+/g, '');
+  const match = s.match(/200[-_]?(?:3[-_]?)?\d+(?:\.\d+)?/);
+  if (match) return match[0].replace(/[^0-9\.]/g, '');
+  return s.replace(/[^A-Z0-9]/g, '');
+};
+
+const parseZeppOrigin = (orig) => {
+  const clean = String(orig || '').trim();
+  const parts = clean.split('/').map(p => p.trim()).filter(Boolean);
+  if (parts.length >= 4) {
+    return {
+      contratoRaw: (parts[0] + '/' + parts[1]).replace(/\s+/g, '').toUpperCase(),
+      contratoCore: extractContractCore(parts[1]),
+      obra: parts[2],
+      medicao: normalizeMed(parts[3])
+    };
+  } else if (parts.length === 3) {
+    return {
+      contratoRaw: (parts[0] + '/' + parts[1]).replace(/\s+/g, '').toUpperCase(),
+      contratoCore: extractContractCore(parts[1]),
+      obra: '',
+      medicao: normalizeMed(parts[2])
+    };
+  }
+  return {
+    contratoRaw: clean.replace(/\s+/g, '').toUpperCase(),
+    contratoCore: extractContractCore(clean),
+    obra: '',
+    medicao: ''
+  };
+};
+
 const processMedicoes = (siengeData, zeppData, romaneioData, rawSiengeRows = []) => {
   // 1. Extrair medições do Sienge (Boletim ou Tabela)
   let siengeMedicoes = [];
@@ -682,62 +727,33 @@ const processMedicoes = (siengeData, zeppData, romaneioData, rawSiengeRows = [])
       cleaned[k.trim()] = row[k];
     });
     return cleaned;
-  });
+  }).filter(r => r['MEDIÇÃO'] !== undefined && (r['ID CONTRATO'] || r['RAZÃO SOCIAL']));
 
-  const controleMapKey = {};
-  const controleMapValorFornec = {};
-  const controleMapValor = {};
+  const controleList = cleanControle.map((c, idx) => ({
+    idx,
+    row: c,
+    contratoRaw: String(c['ID CONTRATO'] || '').replace(/\s+/g, '').toUpperCase(),
+    contratoCore: extractContractCore(c['ID CONTRATO']),
+    med: normalizeMed(c['MEDIÇÃO']),
+    cnpj: String(c['CNPJ'] || '').replace(/\D/g, ''),
+    fornec: normalizeStr(c['RAZÃO SOCIAL'] || '')
+  }));
   const matchedControleIndexes = new Set();
 
-  cleanControle.forEach((c, idx) => {
-    const contrato = String(c['ID CONTRATO'] || '').replace(/\s+/g, '').toUpperCase();
-    const med = String(c['MEDIÇÃO'] || '').replace(/\s+/g, '');
-    if (contrato && med) {
-      controleMapKey[`${contrato}_${med}`] = { row: c, idx };
-    }
-    const valorTotalStr = normalizeNum(c['VALOR TOTAL']).toFixed(2);
-    const fornecNorm = normalizeStr(c['RAZÃO SOCIAL'] || '');
-    if (fornecNorm && valorTotalStr !== '0.00') {
-      controleMapValorFornec[`${fornecNorm}_${valorTotalStr}`] = { row: c, idx };
-    }
-    if (valorTotalStr !== '0.00' && !controleMapValor[valorTotalStr]) {
-      controleMapValor[valorTotalStr] = { row: c, idx };
-    }
-  });
-
   // 3. Normalizar base Zepp (ZEPP_MEDIÇÕES.xlsx)
-  const zeppMapKey = {};
-  const zeppMapValor = {};
-  const matchedZeppIndexes = new Set();
-
-  (zeppData || []).forEach((z, idx) => {
-    const codOrigem = String(z['Código Origem'] || '').trim();
-    const parts = codOrigem.split('/').map(p => p.trim()).filter(Boolean);
-    let contract = '';
-    let medicao = '';
-    if (parts.length >= 4) {
-      contract = `${parts[0]}/${parts[1]}`.replace(/\s+/g, '').toUpperCase();
-      medicao = parts[3].replace(/\s+/g, '');
-    } else if (parts.length === 3) {
-      contract = parts[0].replace(/\s+/g, '').toUpperCase();
-      medicao = parts[2].replace(/\s+/g, '');
-    } else {
-      contract = codOrigem.replace(/\s+/g, '').toUpperCase();
-    }
-
-    if (contract && medicao) {
-      const key = `${contract}_${medicao}`;
-      if (!zeppMapKey[key]) zeppMapKey[key] = [];
-      zeppMapKey[key].push({ row: z, idx });
-    }
-
-    const valorZepp = normalizeNum(z['Valor']);
-    const valorStr = valorZepp.toFixed(2);
-    if (valorStr !== '0.00') {
-      if (!zeppMapValor[valorStr]) zeppMapValor[valorStr] = [];
-      zeppMapValor[valorStr].push({ row: z, idx });
-    }
+  const zeppList = (zeppData || []).map((z, idx) => {
+    const p = parseZeppOrigin(z['Código Origem']);
+    return {
+      idx,
+      row: z,
+      contratoRaw: p.contratoRaw,
+      contratoCore: p.contratoCore,
+      med: p.medicao,
+      valor: normalizeNum(z['Valor']),
+      status: z['Status Atual Proc.'] || z['Status'] || ''
+    };
   });
+  const matchedZeppIndexes = new Set();
 
   const results = [];
   let valorTotalMedido = 0;
@@ -748,18 +764,22 @@ const processMedicoes = (siengeData, zeppData, romaneioData, rawSiengeRows = [])
 
   // Processar itens do Sienge
   siengeMedicoes.forEach(sm => {
-    const contractNorm = String(sm.contrato || '').replace(/\s+/g, '').toUpperCase();
-    const medNorm = String(sm.numMedicao || '').replace(/\s+/g, '');
-    const key = `${contractNorm}_${medNorm}`;
-    const valorTotalStr = normalizeNum(sm.totalBruto).toFixed(2);
-    const fornecNorm = normalizeStr(sm.fornecedor || '');
+    const smMed = normalizeMed(sm.numMedicao);
+    const ctRaw = String(sm.contrato || '').replace(/\s+/g, '').toUpperCase();
+    const ctCore = extractContractCore(sm.contrato);
+    const smFornec = normalizeStr(sm.fornecedor || '');
+    const smCnpj = String(sm.cnpjObs || '').replace(/\D/g, '');
 
-    // Buscar no Zepp
+    // Buscar no Zepp (A numeração da medição DEVE coincidir estritamente!)
     let zMatch = null;
-    if (zeppMapKey[key] && zeppMapKey[key].length > 0) {
-      zMatch = zeppMapKey[key][0];
-    } else if (zeppMapValor[valorTotalStr] && zeppMapValor[valorTotalStr].length > 0) {
-      zMatch = zeppMapValor[valorTotalStr][0];
+    if (smMed) {
+      zMatch = zeppList.find(z => {
+        if (z.med !== smMed) return false;
+        if (z.contratoRaw && z.contratoRaw === ctRaw) return true;
+        if (z.contratoCore && ctCore && z.contratoCore === ctCore) return true;
+        if (z.contratoCore && ctRaw.includes(z.contratoCore)) return true;
+        return false;
+      });
     }
 
     if (zMatch) {
@@ -770,14 +790,17 @@ const processMedicoes = (siengeData, zeppData, romaneioData, rawSiengeRows = [])
     const statusZepp = zRow ? (zRow['Status Atual Proc.'] || zRow['Status'] || 'Aprovado') : 'Não encontrado';
     const statusZeppLower = statusZepp.toLowerCase();
 
-    // Buscar no Controle
+    // Buscar no Controle (A numeração da medição DEVE coincidir estritamente!)
     let cMatch = null;
-    if (controleMapKey[key]) {
-      cMatch = controleMapKey[key];
-    } else if (controleMapValorFornec[`${fornecNorm}_${valorTotalStr}`]) {
-      cMatch = controleMapValorFornec[`${fornecNorm}_${valorTotalStr}`];
-    } else if (controleMapValor[valorTotalStr]) {
-      cMatch = controleMapValor[valorTotalStr];
+    if (smMed) {
+      cMatch = controleList.find(c => {
+        if (c.med !== smMed) return false;
+        if (c.contratoRaw && c.contratoRaw === ctRaw) return true;
+        if (c.contratoCore && ctCore && c.contratoCore === ctCore) return true;
+        if (c.cnpj && smCnpj && c.cnpj === smCnpj) return true;
+        if (c.fornec && smFornec && (c.fornec.includes(smFornec) || smFornec.includes(c.fornec))) return true;
+        return false;
+      });
     }
 
     if (cMatch) {
