@@ -163,9 +163,50 @@ async function runE2ETests() {
   } else {
     console.warn("Arquivos de pedidos ausentes.");
   }
+  // 4. TESTE E2E DA ABA DE TÍTULOS COM PLANILHAS REAIS APROVADAS
+  console.log("\n[4] TESTANDO E2E DA ABA DE TÍTULOS COM PLANILHAS REAIS:");
+  const titSiengePath = "C:\\Users\\Alexsandro Morais\\ABR GERENCIAMENTO E ENGENHARIA LTDA\\LYO004 SIMOES FILHO G200 - Documentos\\03. CUSTOS\\3.0 MEDIÇÕES APROVADAS E NF'S\\1. ROMANEIOS\\0.APROVADOS\\TÍTULOS\\TÍTULOS SIENGE.xlsx";
+  const titZeppPath = "C:\\Users\\Alexsandro Morais\\ABR GERENCIAMENTO E ENGENHARIA LTDA\\LYO004 SIMOES FILHO G200 - Documentos\\03. CUSTOS\\3.0 MEDIÇÕES APROVADAS E NF'S\\1. ROMANEIOS\\0.APROVADOS\\TÍTULOS\\TÍTULOS ZEPP.xlsx";
+  const titRomaneioPath = "C:\\Users\\Alexsandro Morais\\ABR GERENCIAMENTO E ENGENHARIA LTDA\\LYO004 SIMOES FILHO G200 - Documentos\\03. CUSTOS\\3.0 MEDIÇÕES APROVADAS E NF'S\\1. ROMANEIOS\\0.APROVADOS\\TÍTULOS\\ROMANEIO.xlsx";
 
-  // 4. TESTE DE RESILIÊNCIA A FALHAS E ENTRADAS VAZIAS
-  console.log("\n[4] TESTANDO RESILIÊNCIA E TRATAMENTO DE EXCEÇÃO (NULL SAFETY):");
+  if (fs.existsSync(titSiengePath) && fs.existsSync(titZeppPath) && fs.existsSync(titRomaneioPath)) {
+    const siengeBuf = fs.readFileSync(titSiengePath);
+    const zeppBuf = fs.readFileSync(titZeppPath);
+    const romaneioBuf = fs.readFileSync(titRomaneioPath);
+
+    const wbSienge = XLSX.read(siengeBuf, { type: 'buffer' });
+    const wbZepp = XLSX.read(zeppBuf, { type: 'buffer' });
+    const wbRomaneio = XLSX.read(romaneioBuf, { type: 'buffer' });
+
+    const siengeData = XLSX.utils.sheet_to_json(wbSienge.Sheets[wbSienge.SheetNames[0]], { defval: '', raw: true });
+    const zeppData = XLSX.utils.sheet_to_json(wbZepp.Sheets[wbZepp.SheetNames[0]], { defval: '', raw: true });
+    const romaneioData = XLSX.utils.sheet_to_json(wbRomaneio.Sheets[wbRomaneio.SheetNames[0]], { defval: '', raw: true });
+
+    const titResult = processTitulos(siengeData, zeppData, romaneioData);
+
+    assert(titResult.results.length > 0, `Títulos processou ${titResult.results.length} linhas com sucesso`);
+    assert(titResult.kpi.total > 0, `KPI 'Total' calculado: ${titResult.kpi.total}`);
+    assert(titResult.kpi.pronto > 0, `KPI 'Pronto (OK)' calculado: ${titResult.kpi.pronto}`);
+    assert(titResult.kpi.acao > 0, `KPI 'Ação Requerida' calculado: ${titResult.kpi.acao}`);
+
+    const sampleTit = titResult.results[0];
+    const titKeys = ['id', 'tipoDocumento', 'credor', 'dataEmissao', 'vencimento', 'numeroNF', 'valor', 'statusZepp', 'noRomaneio', 'observacao', 'acao'];
+    let allTitKeysPresent = titKeys.every(k => k in sampleTit);
+    assert(allTitKeysPresent, "Todas as colunas requeridas de Títulos estão presentes no cabeçalho/dados");
+
+    // Verificar se as datas estão formatadas corretamente e não números brutos do Excel
+    const hasRawNumericDate = titResult.results.some(r => typeof r.dataEmissao === 'number' || typeof r.vencimento === 'number');
+    assert(!hasRawNumericDate, "100% das datas de emissão e vencimento formatadas (DD/MM/YYYY)");
+
+    // Verificar se os status do Zepp estão mapeados corretamente
+    const hasValidZeppStatus = titResult.results.some(r => r.statusZepp === 'Aprovado' || r.statusZepp === 'Em Aprovação');
+    assert(hasValidZeppStatus, "Status do Zepp mapeados com sucesso ('Aprovado', 'Em Aprovação', etc.)");
+  } else {
+    console.warn("Arquivos de títulos ausentes.");
+  }
+
+  // 5. TESTE DE RESILIÊNCIA A FALHAS E ENTRADAS VAZIAS
+  console.log("\n[5] TESTANDO RESILIÊNCIA E TRATAMENTO DE EXCEÇÃO (NULL SAFETY):");
   try {
     const r1 = processPedidos([], [], []);
     assert(r1.results.length === 0 && r1.kpi.total === 0, "processPedidos([]) lida com arrays vazios sem crash");

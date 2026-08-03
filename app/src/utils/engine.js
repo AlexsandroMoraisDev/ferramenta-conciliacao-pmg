@@ -111,6 +111,7 @@ const buildCredorValorKey = (row) => {
 };
 
 const filterFallbackMatches = (matches, idSienge) => {
+  if (!matches) return [];
   if (!idSienge) return matches;
   return matches.filter(r => {
     if (!r._extractedId) return true;
@@ -128,12 +129,30 @@ const filterFallbackMatches = (matches, idSienge) => {
 //   #3 Melhor match no Zepp para duplicatas (prioriza Aprovado)
 //   #4 Concatena todos os romaneios quando título está em múltiplos
 //   #5 Normaliza acento em 'concluído' para comparação segura
-//   #6 Data de emissão com fallback no Sienge
+//   #6 Data de emissão e vencimento com suporte a serial do Excel
+//   #7 Mapeamento de 'Status Atual Proc.' do Zepp
 // ---------------------------------------------------------
 
 // Normaliza string removendo acentos para comparações seguras
 const removeAccents = (str) =>
   String(str || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+
+const getZeppStatus = (row) => {
+  if (!row) return 'Não Encontrado';
+  return row['Status Atual Proc.'] || row['Status'] || row['Status Atual'] || 'Não Encontrado';
+};
+
+const formatDateValue = (val) => {
+  if (!val) return '-';
+  if (typeof val === 'number' && val > 30000 && val < 60000) {
+    const d = new Date((val - 25569) * 86400 * 1000);
+    const day = String(d.getUTCDate()).padStart(2, '0');
+    const month = String(d.getUTCMonth() + 1).padStart(2, '0');
+    const year = d.getUTCFullYear();
+    return `${day}/${month}/${year}`;
+  }
+  return String(val).trim() || '-';
+};
 
 // Seleciona o melhor match do Zepp quando há duplicatas:
 // Prioridade: Aprovado/Concluido > outros > primeiro disponível
@@ -142,7 +161,7 @@ const getBestZeppMatch = (matches) => {
   if (matches.length === 1) return matches[0];
   // Prioridade 1: Aprovado ou Concluído
   const aprovado = matches.find(r => {
-    const s = removeAccents(r['Status'] || '');
+    const s = removeAccents(getZeppStatus(r));
     return s.includes('aprovado') || s.includes('concluido');
   });
   if (aprovado) return aprovado;
@@ -164,7 +183,9 @@ export const processTitulos = (siengeData, zeppData, romaneioData) => {
   const zeppMapTitulo = {};
   const zeppMapCredorValor = {};
   zeppData.forEach(row => {
-    const titulo = String(row['Código Origem'] || '').split('/')[0].trim();
+    const rawCodigo = String(row['Código Origem'] || '').trim();
+    if (!rawCodigo) return;
+    const titulo = rawCodigo.split('/')[0].trim();
     row._extractedId = titulo;
     const cv = buildCredorValorKey(row);
     if (!zeppMapCredorValor[cv]) zeppMapCredorValor[cv] = [];
@@ -179,7 +200,9 @@ export const processTitulos = (siengeData, zeppData, romaneioData) => {
   const romaneioMapTitulo = {};
   const romaneioMapCredorValor = {};
   romaneioData.forEach(row => {
-    const titulo = String(row['TÍTULOS SIENGE'] || row['Título'] || row['TÍTULO'] || '').trim();
+    const rawTitulo = row['TÍTULOS SIENGE'] !== undefined ? row['TÍTULOS SIENGE'] : (row['Título'] || row['TÍTULO']);
+    const titulo = String(rawTitulo !== undefined && rawTitulo !== null ? rawTitulo : '').trim();
+    if (!titulo) return;
     row._extractedId = titulo;
     const cv = buildCredorValorKey(row);
     if (!romaneioMapCredorValor[cv]) romaneioMapCredorValor[cv] = [];
@@ -196,13 +219,13 @@ export const processTitulos = (siengeData, zeppData, romaneioData) => {
   const processedSiengeIds = new Set();
 
   siengeData.forEach(siengeRow => {
-    const tituloSienge = String(siengeRow['Título'] || siengeRow['TÍTULO'] || siengeRow['Código Origem'] || '').trim();
+    const rawTituloSienge = siengeRow['Título'] !== undefined ? siengeRow['Título'] : (siengeRow['TÍTULO'] || siengeRow['Código Origem']);
+    const tituloSienge = String(rawTituloSienge !== undefined && rawTituloSienge !== null ? rawTituloSienge : '').trim();
     if (!tituloSienge) {
-      console.warn('[Títulos] Linha ignorada por falta de identificador de Título:', siengeRow);
       return;
     }
 
-    if (tituloSienge) processedSiengeIds.add(tituloSienge);
+    processedSiengeIds.add(tituloSienge);
     const cv = buildCredorValorKey(siengeRow);
     const zeppMatches = (tituloSienge && zeppMapTitulo[tituloSienge]) 
       || filterFallbackMatches(zeppMapCredorValor[cv], tituloSienge) 
@@ -215,25 +238,17 @@ export const processTitulos = (siengeData, zeppData, romaneioData) => {
     const inRomaneio = romaneioMatches.length > 0;
 
     const bestZepp = getBestZeppMatch(zeppMatches);
-    const statusZepp = bestZepp ? bestZepp['Status'] : 'Não Encontrado';
+    const statusZepp = bestZepp ? getZeppStatus(bestZepp) : 'Não Encontrado';
     const zeppStatusNorm = removeAccents(statusZepp);
 
     let acao = '';
     const noRomaneio = getAllRomaneioNums(romaneioMatches);
 
-    const tipoDocumento = (bestZepp && (bestZepp['Tipo de Documento'] || bestZepp['Tipo de documento']))
-      || siengeRow['Tipo de Documento']
-      || siengeRow['Tipo documento']
-      || siengeRow['Tipo de documento']
-      || '-';
+    const tipoDocumento = (siengeRow['Documento'] || siengeRow['Tipo de Documento'] || siengeRow['Tipo documento'] || siengeRow['Tipo de documento'] || (bestZepp && (bestZepp['Tipo de Documento'] || bestZepp['Tipo de documento'] || bestZepp['Workflow'])) || '-').trim();
 
-    const dataEmissao = (bestZepp && (bestZepp['Data de Emissão'] || bestZepp['Data de emissão'] || bestZepp['Data Emissão']))
-      || siengeRow['Data de emissão']
-      || siengeRow['Data emissão']
-      || siengeRow['Data de Emissão']
-      || '-';
+    const dataEmissao = formatDateValue(siengeRow['Data emissão'] || siengeRow['Data de emissão'] || (bestZepp && (bestZepp['Dt. Emissão'] || bestZepp['Data de Emissão'] || bestZepp['Data Emissão'])));
 
-    const vencimentoZepp = bestZepp ? (bestZepp['Data de Vencimento'] || bestZepp['Vencimento']) : null;
+    const vencimento = formatDateValue((bestZepp && (bestZepp['Dt. Vencto'] || bestZepp['Data de Vencimento'] || bestZepp['Vencimento'])) || (romaneioMatches[0] && romaneioMatches[0]['DATA DE VENCIMENTO']) || siengeRow['Data competência'] || siengeRow['Data contábil']);
 
     if (inRomaneio && inZepp && (zeppStatusNorm.includes('aprovado') || zeppStatusNorm.includes('concluido'))) {
       acao = 'OK: Lançado no Romaneio e Enviado'; kpi.pronto++;
@@ -251,14 +266,14 @@ export const processTitulos = (siengeData, zeppData, romaneioData) => {
     results.push({
       id: tituloSienge || '-',
       tipoDocumento: tipoDocumento || '-',
-      credor: siengeRow['Credor'] || '-',
-      dataEmissao: dataEmissao || '-',
-      vencimento: vencimentoZepp || siengeRow['Data competência'] || siengeRow['Data contábil'] || '-',
-      numeroNF: siengeRow['Nº documento'] || '-',
-      valor: getValor(siengeRow),
+      credor: siengeRow['Credor'] || (romaneioMatches[0] && romaneioMatches[0]['RAZÃO SOCIAL']) || '-',
+      dataEmissao: dataEmissao,
+      vencimento: vencimento,
+      numeroNF: siengeRow['Nº documento'] || (romaneioMatches[0] && romaneioMatches[0]['NºNOTA']) || '-',
+      valor: getValor(siengeRow) || (romaneioMatches[0] ? getValor(romaneioMatches[0]) : 0),
       statusZepp: statusZepp,
       noRomaneio: noRomaneio,
-      observacao: bestZepp ? (bestZepp['Observação'] || '-') : '-',
+      observacao: bestZepp ? (bestZepp['Observação Proc'] || bestZepp['Observação'] || '-') : (siengeRow['Observação'] || '-'),
       acao: acao,
       originalSienge: siengeRow,
       originalZepp: bestZepp,
@@ -269,13 +284,16 @@ export const processTitulos = (siengeData, zeppData, romaneioData) => {
   // Varredura reversa de órfãos no Zepp
   const zeppOrphans = new Set();
   zeppData.forEach(row => {
-    const titulo = String(row['Código Origem'] || '').split('/')[0].trim();
+    const rawCodigo = String(row['Código Origem'] || '').trim();
+    if (!rawCodigo) return;
+    const titulo = rawCodigo.split('/')[0].trim();
     if (!titulo || titulo === 'nan') return;
     if (!/^\d+$/.test(titulo)) return;
     if (processedSiengeIds.has(titulo)) return;
     if (zeppOrphans.has(titulo)) return;
 
-    const statusNorm = removeAccents(row['Status'] || '');
+    const statusZepp = getZeppStatus(row);
+    const statusNorm = removeAccents(statusZepp);
     const isAprovado = statusNorm.includes('aprovado') || statusNorm.includes('concluido');
     if (!isAprovado) return;
 
@@ -283,7 +301,6 @@ export const processTitulos = (siengeData, zeppData, romaneioData) => {
     const romaneioMatchesAll = romaneioMapTitulo[titulo] || [];
     const inRomaneio = romaneioMatchesAll.length > 0;
     const noRomaneio = inRomaneio ? getAllRomaneioNums(romaneioMatchesAll) : 'Sem Romaneio';
-    const statusZepp = row['Status'] || 'Aprovado';
     const zeppStatusNorm = removeAccents(statusZepp);
 
     let acao = '';
@@ -304,15 +321,15 @@ export const processTitulos = (siengeData, zeppData, romaneioData) => {
     kpi.total++;
     results.push({
       id: titulo,
-      tipoDocumento: '-',
-      credor: row['Credor'] || '-',
-      dataEmissao: row['Emissão'] || row['emissão'] || '-',
-      vencimento: row['Dt. Vencto'] || row['Dt. vencto'] || '-',
-      numeroNF: '-',
-      valor: getValor(row),
+      tipoDocumento: row['Workflow'] || '-',
+      credor: (romaneioMatchesAll[0] && romaneioMatchesAll[0]['RAZÃO SOCIAL']) || row['Credor'] || '-',
+      dataEmissao: formatDateValue(row['Dt. Emissão'] || row['Data de Emissão'] || row['Emissão']),
+      vencimento: formatDateValue(row['Dt. Vencto'] || row['Data de Vencimento'] || (romaneioMatchesAll[0] && romaneioMatchesAll[0]['DATA DE VENCIMENTO'])),
+      numeroNF: (romaneioMatchesAll[0] && romaneioMatchesAll[0]['NºNOTA']) || '-',
+      valor: getValor(row) || (romaneioMatchesAll[0] ? getValor(romaneioMatchesAll[0]) : 0),
       statusZepp: statusZepp,
       noRomaneio: noRomaneio,
-      observacao: '⚠️ Título não encontrado na extração do Sienge',
+      observacao: row['Observação Proc'] || '⚠️ Título não encontrado na extração do Sienge',
       acao: acao,
       originalZepp: row,
       originalSienge: null,
